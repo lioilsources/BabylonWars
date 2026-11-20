@@ -176,3 +176,16 @@ export function frameSpawn(isl: Island, fromX?: number, fromZ?: number): { x: nu
     yaw: Math.atan2(-dx, -dz),
   };
 }
+
+/** Nejbližší ostrov daného biomu (mapgen.lua nearest_island_of_biome) */
+export function nearestIslandOfBiome(x: number, z: number, biome: string, seed: number, maxCells = 12): { isl: Island; dist: number } | null {
+  const ccx = Math.floor(x / ISLAND_GRID), ccz = Math.floor(z / ISLAND_GRID);
+  let best: Island | null = null, bestd = Infinity;
+  for (let dcx = -maxCells; dcx <= maxCells; dcx++) for (let dcz = -maxCells; dcz <= maxCells; dcz++) {
+    const isl = cachedIsland(ccx + dcx, ccz + dcz, seed);
+    if (!isl || isl.biome.name !== biome) continue;
+    const d = Math.hypot(isl.x - x, isl.z - z);
+    if (d < bestd) { bestd = d; best = isl; }
+  }
+  return best ? { isl: best, dist: bestd } : null;
+}

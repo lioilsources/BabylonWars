@@ -57,9 +57,9 @@ describe('editace a svět', () => {
     const c = e.collect(0, 0, 0)!; // pro chunk 0 leží x=32 v lemu (i = 33)
     expect(Array.from(c)).toEqual([volIndex(33, 6, 6), 3]);
   });
-  it('generátor po voxelu = generátor po chuncích', () => {
+  it('generátor po voxelu = terén generátoru po chuncích', () => {
     const v = new Uint16Array(VOL_SIZE);
-    generateChunk(v, 0, 13, 0, 0, 42);
+    generateChunk(v, 0, 13, 0, 0, 42, undefined, false);
     let checked = 0;
     for (let j = 1; j <= 32; j += 3) for (let k = 1; k <= 32; k += 3) for (let i = 1; i <= 32; i += 3) {
       const x = i - 1, y = 13 * 32 + j - 1, z = k - 1;

@@ -26,3 +26,9 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: #8cbff2; tou
 .btn.on { background: #fff6; }
 .btn-fire { width: 76px; height: 76px; right: max(20px, env(safe-area-inset-right)); bottom: max(60px, env(safe-area-inset-bottom)); }
 .btn-boost { width: 58px; height: 58px; right: max(110px, env(safe-area-inset-right)); bottom: max(40px, env(safe-area-inset-bottom)); }
+#console { position: absolute; left: 50%; bottom: 70px; transform: translateX(-50%); width: min(520px, calc(100vw - 32px));
+  display: none; pointer-events: auto; background: #000a; color: #fff; border: 1px solid #fff6; border-radius: 6px; padding: 8px; font: inherit; font-size: 14px; }
+#console.open { display: block; }
+#console-log { position: absolute; left: 50%; bottom: 110px; transform: translateX(-50%); margin: 0; max-width: calc(100vw - 32px);
+  white-space: pre-wrap; text-shadow: var(--shadow); display: none; text-align: center; }
+#console-log.open { display: block; }

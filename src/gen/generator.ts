@@ -2,7 +2,8 @@
 // Čistá funkce (cx, cy, cz, lod, seed) → voxely; běží ve workeru.
 // Objem má lem 1 voxel kolem chunku, aby mesher nepotřeboval sousedy.
 
-import { nodeId, AIR } from '../voxel/registry';
+import { nodeId, AIR, NODE_DRAW } from '../voxel/registry';
+import { buildFeatures, FEATURE_PAD, type Feature, type TerrainQuery } from './features';
 import { CHUNK, VOL, volIndex } from '../voxel/coords';
 import { type Island, islandProfile, islandsTouching, yExtents, TUNNEL_R2 } from './islands';
 import { NP_EDGE, NP_HILLS, NP_T1, NP_T2, noise2, noise3 } from './noise';
@@ -36,7 +37,7 @@ export const chunkWorldSize = (lod: number): number => CHUNK << lod;
  * (bez lemu) — 0 znamená prázdný chunk.
  */
 export function generateChunk(vol: Uint16Array, cx: number, cy: number, cz: number, lod: number, seed: number,
-  top?: Int32Array): number {
+  top?: Int32Array, decorate = true): number {
   vol.fill(AIR);
   top?.fill(NO_TOP);
   const s = 1 << lod;
@@ -44,7 +45,7 @@ export function generateChunk(vol: Uint16Array, cx: number, cy: number, cz: numb
   const ox = cx * size - s, oy = cy * size - s, oz = cz * size - s; // svět pro index 0 (lem)
   const maxW = (VOL - 1) * s;
   const islands = islandsTouching(ox, oy, oz, ox + maxW, oy + maxW, oz + maxW, seed, tmpIslands);
-  if (islands.length === 0) return 0;
+  // bez terénu může chunk pořád nést dekorace (vrchol sopky nad obálkou ostrova)
 
   let filled = 0;
   for (const isl of islands) {
@@ -78,14 +79,9 @@ export function generateChunk(vol: Uint16Array, cx: number, cy: number, cz: numb
           return lim > 0 && dist <= lim;
         };
         if (top) {
-          // horní plocha sloupce: hrubě po 4 shora, pak zpřesni
-          let y = yMax;
-          while (y >= yMin && !solidAt(y)) y -= 4;
-          if (y >= yMin) {
-            while (y + 1 <= yMax && solidAt(y + 1)) y++;
-            const ti = k * VOL + i;
-            if (y > top[ti]) top[ti] = y;
-          }
+          const y = scanTop(solidAt, yMin, yMax);
+          const ti = k * VOL + i;
+          if (y !== null && y > top[ti]) top[ti] = y;
         }
 
         // hloubka pod povrchem odshora (calc_depth: souvislé plné nad y, max 6)
@@ -124,7 +120,87 @@ export function generateChunk(vol: Uint16Array, cx: number, cy: number, cz: numb
       }
     }
   }
+  if (decorate) filled += stampFeatures(vol, top, ox, oy, oz, s, seed);
   return filled;
+}
+
+// horní plocha sloupce: hrubě po 4 shora, pak zpřesni
+function scanTop(solidAt: (y: number) => boolean, yMin: number, yMax: number): number | null {
+  let y = yMax;
+  while (y >= yMin && !solidAt(y)) y -= 4;
+  if (y < yMin) {
+    // hrubý krok mohl přeskočit tenkou vrstvu u dna — dojeď po jedné
+    for (y = Math.min(yMax, yMin + 3); y >= yMin; y--) if (solidAt(y)) break;
+    if (y < yMin) return null;
+  }
+  while (y + 1 <= yMax && solidAt(y + 1)) y++;
+  return y;
+}
+
+/** Nejvyšší plný blok sloupce ostrova (bez tunelů a dekorací) */
+export function islandColumnTop(isl: Island, x: number, z: number, seed: number): number | null {
+  const [up, down] = yExtents(isl);
+  const yMin = Math.floor(isl.y - down), yMax = Math.ceil(isl.y + up);
+  const edgeAmp = isl.radius * 0.14;
+  const dist = Math.hypot(x - isl.x, z - isl.z);
+  if (dist > isl.radius + edgeAmp + 1) return null;
+  const edgeBoost = noise2(NP_EDGE, x, z, seed) * edgeAmp;
+  const hillShift = noise2(NP_HILLS, x, z, seed) * Math.max(4, isl.radius * 0.16);
+  return scanTop((wy) => {
+    const lim = surfLimit(isl, wy - isl.y, hillShift, edgeBoost);
+    return lim > 0 && dist <= lim;
+  }, yMin, yMax);
+}
+
+// --- dekorace: seznam prvků per ostrov (LRU 64) a razítkování do chunku ---
+const featureCache = new Map<string, Feature[]>();
+function featuresOf(isl: Island, seed: number): Feature[] {
+  const key = `${seed}:${isl.cx}:${isl.cz}`;
+  let f = featureCache.get(key);
+  if (f) { featureCache.delete(key); featureCache.set(key, f); return f; }
+  const t: TerrainQuery = {
+    surfaceY: (i, x, z) => islandColumnTop(i, x, z, seed),
+    solid: (x, y, z) => solidAtWorld(x, y, z, seed),
+  };
+  f = buildFeatures(isl, seed, t);
+  featureCache.set(key, f);
+  if (featureCache.size > 64) featureCache.delete(featureCache.keys().next().value!);
+  return f;
+}
+
+const tmpFeatIslands: Island[] = [];
+
+function stampFeatures(vol: Uint16Array, top: Int32Array | undefined, ox: number, oy: number, oz: number,
+  s: number, seed: number): number {
+  const maxW = (VOL - 1) * s;
+  const P = FEATURE_PAD;
+  const islands = islandsTouching(ox - P, oy - P, oz - P, ox + maxW + P, oy + maxW + P, oz + maxW + P, seed, tmpFeatIslands);
+  let placed = 0;
+  const put = (x: number, y: number, z: number, id: number, ifAir: boolean): void => {
+    const di = x - ox, dk = z - oz;
+    if (di % s !== 0 || dk % s !== 0) return;
+    const i = di / s, k = dk / s;
+    if (i < 0 || k < 0 || i >= VOL || k >= VOL) return;
+    const dj = y - oy;
+    // stín pod korunami stromů: horní plocha sloupce i nad chunkem
+    if (top && id !== AIR && NODE_DRAW[id] !== 'liquid' && y > top[k * VOL + i]) top[k * VOL + i] = y;
+    if (dj % s !== 0) return;
+    const j = dj / s;
+    if (j < 0 || j >= VOL) return;
+    const vi = volIndex(i, j, k);
+    if (ifAir && vol[vi] !== AIR) return;
+    vol[vi] = id;
+    if (id !== AIR) placed++;
+  };
+  for (const isl of islands) {
+    for (const f of featuresOf(isl, seed)) {
+      // v xz se musí protínat; ve y stačí, aby prvek sahal nad spodek chunku (kvůli stínu)
+      if (f.maxX < ox || f.minX > ox + maxW || f.maxZ < oz || f.minZ > oz + maxW || f.maxY < oy) continue;
+      if (!top && f.minY > oy + maxW) continue;
+      f.emit(put);
+    }
+  }
+  return placed;
 }
 
 const tmpPoint: Island[] = [];
