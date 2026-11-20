@@ -22,6 +22,7 @@ import { KeyboardMouse } from './input/keyboard-mouse';
 import { TouchInput } from './input/touch';
 import { isTouch, loadSettings, saveSettings, TUNING, type Quality } from './settings';
 import { createVoxelMaterials } from './voxel.material';
+import { Console } from './commands';
 import { VoxelWorld } from '../voxel/world';
 import { raycast, newHit } from '../voxel/raycast';
 import { AIR } from '../voxel/registry';
@@ -96,6 +97,7 @@ async function boot(): Promise<void> {
     else if (code === 'KeyT') cycleTilt();
     else if (code === 'KeyQ') cycleQuality();
     else if (code === 'KeyR') respawn();
+    else if (code === 'Slash' || code === 'NumpadDivide') konsole.open();
   };
   input.devices.push(new KeyboardMouse(canvas, input, settings, onKey));
   const gamepad = new GamepadInput();
@@ -118,7 +120,18 @@ async function boot(): Promise<void> {
     settings.quality = qualities[(qualities.indexOf(settings.quality) + 1) % qualities.length];
     applyQuality(settings.quality); save();
   };
-  for (const [id, fn] of [['b-view', toggleView], ['b-preset', cyclePreset], ['b-tilt', cycleTilt], ['b-quality', cycleQuality], ['b-respawn', respawn]] as const) {
+  const teleport = (x: number, y: number, z: number, yaw?: number): void => {
+    const n = createShip(vec3(x, y, z), yaw ?? headingAngle(ship.att));
+    Object.assign(ship, n, { control: settings.control, speed: ship.speed });
+    qcopy(prevAtt, ship.att); prevPos.x = x; prevPos.y = y; prevPos.z = z;
+    chunks.dirty = true;
+  };
+  const konsole: Console = new Console(hudRoot, {
+    seed, teleport,
+    pos: () => ship.pos,
+    say: (m) => konsole.say(m),
+  });
+  for (const [id, fn] of [['b-console', () => konsole.open()], ['b-view', toggleView], ['b-preset', cyclePreset], ['b-tilt', cycleTilt], ['b-quality', cycleQuality], ['b-respawn', respawn]] as const) {
     document.getElementById(id)!.addEventListener('click', (e) => { e.stopPropagation(); fn(); });
   }
 

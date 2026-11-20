@@ -7,6 +7,7 @@ import { VertexBuffer } from '@babylonjs/core/Buffers/buffer';
 import type { Material } from '@babylonjs/core/Materials/material';
 import type { Scene } from '@babylonjs/core/scene';
 import { islandsTouching, type Island } from '../gen/islands';
+import { FEATURE_PAD } from '../gen/features';
 import { CHUNK, keyStr } from '../voxel/coords';
 import type { PassMesh } from '../voxel/mesher';
 import type { ChunkJob, ChunkResult } from '../voxel/protocol';
@@ -81,14 +82,18 @@ export class ChunkRenderer {
     const y0 = Math.floor((py - R) / top), y1 = Math.floor((py + R) / top);
     const z0 = Math.floor((pz - R) / top), z1 = Math.floor((pz + R) / top);
 
-    const visit = (cx: number, cy: number, cz: number, lod: number): void => {
+    const visit = (cx: number, cy: number, cz: number, lod: number, top: boolean): void => {
       const size = CHUNK << lod;
       const minX = cx * size, minY = cy * size, minZ = cz * size;
       const dist = aabbDist(px, py, pz, minX, minY, minZ, size);
-      if (dist > r0 * (1 << lod)) return;
-      if (islandsTouching(minX - 1, minY - 1, minZ - 1, minX + size, minY + size, minZ + size, this.world.seed, tmpIsl).length === 0) return;
+      // dosah se ořezává jen na nejvyšší úrovni; potomek rozděleného uzlu
+      // musí svou část pokrýt vždy (jinak vznikne díra na přechodu LOD)
+      if (top && dist > r0 * (1 << lod)) return;
+      // rezerva: dekorace (sopka, rampouchy) přesahují obálku ostrova
+      const P = FEATURE_PAD + 1;
+      if (islandsTouching(minX - P, minY - P, minZ - P, minX + size + P, minY + size + P, minZ + size + P, this.world.seed, tmpIsl).length === 0) return;
       if (lod > 0 && dist < r0 * (1 << (lod - 1))) {
-        for (let i = 0; i < 8; i++) visit(cx * 2 + (i & 1), cy * 2 + ((i >> 1) & 1), cz * 2 + ((i >> 2) & 1), lod - 1);
+        for (let i = 0; i < 8; i++) visit(cx * 2 + (i & 1), cy * 2 + ((i >> 1) & 1), cz * 2 + ((i >> 2) & 1), lod - 1, false);
         return;
       }
       const key = keyStr(cx, cy, cz, lod);
@@ -101,7 +106,7 @@ export class ChunkRenderer {
       }
       n.dist = dist;
     };
-    for (let cx = x0; cx <= x1; cx++) for (let cy = y0; cy <= y1; cy++) for (let cz = z0; cz <= z1; cz++) visit(cx, cy, cz, maxLod);
+    for (let cx = x0; cx <= x1; cx++) for (let cy = y0; cy <= y1; cy++) for (let cz = z0; cz <= z1; cz++) visit(cx, cy, cz, maxLod, true);
     this.desired = desired;
 
     // fronta: jen žádané; přestavby po editaci první, pak blízké a hrubé

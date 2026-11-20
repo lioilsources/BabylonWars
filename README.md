@@ -45,7 +45,25 @@ koule, editace světa s přestavbou dotčených chunků.
 Měření (M2, Chrome, 60 Hz): let 60 m/s přes ostrovy — 1 frame z 600 nad 25 ms,
 upload meshe ≤ 2 za frame.
 
-Zatím chybí (další fáze): kolize lodi (F3), dekorace a tekutiny (F2), zvuk a HUD (F4).
+## Stav: F2 (mapgen)
+
+Hotovo: všech 12 biomů a 5 profilů, tunely, dekorace podle `decorate.lua` — stromy,
+keře, květiny a tráva, kaktusy, krystaly, balvany, obří houby, rampouchy, sopka
+s kráterem a lávovým proudem, laguna atolu, tůně, řeky s vodopádem. Prvky se počítají
+jednou za ostrov ze seedovaného PRNG a razítkují se do chunků, takže svět je stejný
+bez ohledu na pořadí načítání. Tekutiny netečou (statické).
+
+Rozdíly proti Luanti (vědomé): vlastní šum (kopce, pobřeží a tunely se liší v detailu,
+rozmístění, velikosti a biomy ostrovů sedí se seedem přesně), jiný PRNG dekorací
+(stejná pravidla a hustota, jiné konkrétní pozice), prvky se nestohují na sebe.
+
+Příkazy (konzole na **/**, na telefonu tlačítko „/“): `/island <biom>`, `/goto x y z`,
+`/seed`, `/help`.
+
+Rozpočty (M2, u ostrova verdant): `low` 92 DC / 481k tri, `medium` 166 / 1,0 M,
+`high` 226 / 1,5 M.
+
+Zatím chybí (další fáze): kolize lodi (F3), zvuk a HUD (F4).
 
 ### Měření brány F0
 
