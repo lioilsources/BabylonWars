@@ -24,16 +24,21 @@ const idOf = (name: string): number => {
 };
 
 const tmpIslands: Island[] = [];
+export const NO_TOP = -1e9;
 
 /** Velikost chunku ve světě pro daný LOD (voxel = 2^lod bloků) */
 export const chunkWorldSize = (lod: number): number => CHUNK << lod;
 
 /**
- * Vyplní `vol` (VOL³, index volIndex) pro chunk (cx,cy,cz) v mřížce LOD.
- * Vrací počet plných voxelů uvnitř (bez lemu) — 0 znamená prázdný chunk.
+ * Vyplní `vol` (VOL³, index volIndex) pro chunk (cx,cy,cz) v mřížce LOD
+ * a `top` (VOL², index k*VOL+i) = nejvyšší plný blok terénu ve sloupci
+ * (pro analytické světlo; −1e9 = nic). Vrací počet plných voxelů uvnitř
+ * (bez lemu) — 0 znamená prázdný chunk.
  */
-export function generateChunk(vol: Uint8Array, cx: number, cy: number, cz: number, lod: number, seed: number): number {
+export function generateChunk(vol: Uint16Array, cx: number, cy: number, cz: number, lod: number, seed: number,
+  top?: Int32Array): number {
   vol.fill(AIR);
+  top?.fill(NO_TOP);
   const s = 1 << lod;
   const size = CHUNK * s;
   const ox = cx * size - s, oy = cy * size - s, oz = cz * size - s; // svět pro index 0 (lem)
@@ -72,6 +77,16 @@ export function generateChunk(vol: Uint8Array, cx: number, cy: number, cz: numbe
           const lim = surfLimit(isl, wy - isl.y, hillShift, edgeBoost);
           return lim > 0 && dist <= lim;
         };
+        if (top) {
+          // horní plocha sloupce: hrubě po 4 shora, pak zpřesni
+          let y = yMax;
+          while (y >= yMin && !solidAt(y)) y -= 4;
+          if (y >= yMin) {
+            while (y + 1 <= yMax && solidAt(y + 1)) y++;
+            const ti = k * VOL + i;
+            if (y > top[ti]) top[ti] = y;
+          }
+        }
 
         // hloubka pod povrchem odshora (calc_depth: souvislé plné nad y, max 6)
         const topY = oy + j1 * s;
@@ -110,4 +125,31 @@ export function generateChunk(vol: Uint8Array, cx: number, cy: number, cz: numbe
     }
   }
   return filled;
+}
+
+const tmpPoint: Island[] = [];
+
+/**
+ * Je node (x,y,z) plný podle generátoru (bez editací)? Pro dotazy mimo
+ * načtené chunky — stejná logika jako generateChunk pro jeden voxel.
+ */
+export function solidAtWorld(x: number, y: number, z: number, seed: number): boolean {
+  for (const isl of islandsTouching(x, y, z, x, y, z, seed, tmpPoint)) {
+    const [up, down] = yExtents(isl);
+    if (y < Math.floor(isl.y - down) || y > Math.ceil(isl.y + up)) continue;
+    const dx = x - isl.x, dz = z - isl.z;
+    const edgeAmp = isl.radius * 0.14;
+    const dist = Math.sqrt(dx * dx + dz * dz);
+    if (dist > isl.radius + edgeAmp + 1) continue;
+    const edgeBoost = noise2(NP_EDGE, x, z, seed) * edgeAmp;
+    const hillShift = noise2(NP_HILLS, x, z, seed) * Math.max(4, isl.radius * 0.16);
+    const lim = surfLimit(isl, y - isl.y, hillShift, edgeBoost);
+    if (!(lim > 0 && dist <= lim)) continue;
+    if (isl.tunnels && Math.abs(y - isl.y) < isl.radius * 0.5) {
+      const a = noise3(NP_T1, x, y, z, seed), b = noise3(NP_T2, x, y, z, seed);
+      if (a * a + b * b < TUNNEL_R2) continue;
+    }
+    return true;
+  }
+  return false;
 }

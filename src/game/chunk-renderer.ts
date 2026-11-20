@@ -8,7 +8,9 @@ import type { Material } from '@babylonjs/core/Materials/material';
 import type { Scene } from '@babylonjs/core/scene';
 import { islandsTouching, type Island } from '../gen/islands';
 import { CHUNK, keyStr } from '../voxel/coords';
+import type { PassMesh } from '../voxel/mesher';
 import type { ChunkJob, ChunkResult } from '../voxel/protocol';
+import type { VoxelWorld } from '../voxel/world';
 
 export interface StreamSettings {
   /** Poloměr LOD 0 (bloky); LOD L končí na r0 · 2^L */
@@ -21,9 +23,13 @@ interface Node {
   key: string;
   cx: number; cy: number; cz: number; lod: number;
   state: 'queued' | 'running' | 'ready' | 'empty';
-  mesh?: Mesh;
+  meshes: Mesh[];
   quads: number;
   dist: number;
+  /** po editaci: přestavět, starý mesh drž, dokud nedorazí nový */
+  rebuild: boolean;
+  /** běží job pro přestavbu (stav zůstává ready/empty) */
+  rebuilding: boolean;
 }
 
 const tmpIsl: Island[] = [];
@@ -40,9 +46,9 @@ export class ChunkRenderer {
   private lastUpdate = { x: Infinity, y: Infinity, z: Infinity };
   dirty = true;
 
-  stats = { meshes: 0, quads: 0, queued: 0, running: 0, jobMs: 0 };
+  stats = { meshes: 0, quads: 0, queued: 0, running: 0, jobMs: 0, uploadMs: 0 };
 
-  constructor(private scene: Scene, private material: Material, private seed: number, public settings: StreamSettings) {
+  constructor(private scene: Scene, private materials: Material[], private world: VoxelWorld, public settings: StreamSettings) {
     const n = Math.max(1, Math.min((navigator.hardwareConcurrency || 4) - 1, 4));
     for (let i = 0; i < n; i++) {
       const w = new Worker(new URL('../workers/chunk.worker.ts', import.meta.url), { type: 'module' });
@@ -80,7 +86,7 @@ export class ChunkRenderer {
       const minX = cx * size, minY = cy * size, minZ = cz * size;
       const dist = aabbDist(px, py, pz, minX, minY, minZ, size);
       if (dist > r0 * (1 << lod)) return;
-      if (islandsTouching(minX, minY, minZ, minX + size, minY + size, minZ + size, this.seed, tmpIsl).length === 0) return;
+      if (islandsTouching(minX - 1, minY - 1, minZ - 1, minX + size, minY + size, minZ + size, this.world.seed, tmpIsl).length === 0) return;
       if (lod > 0 && dist < r0 * (1 << (lod - 1))) {
         for (let i = 0; i < 8; i++) visit(cx * 2 + (i & 1), cy * 2 + ((i >> 1) & 1), cz * 2 + ((i >> 2) & 1), lod - 1);
         return;
@@ -89,7 +95,7 @@ export class ChunkRenderer {
       desired.add(key);
       let n = this.nodes.get(key);
       if (!n) {
-        n = { key, cx, cy, cz, lod, state: 'queued', quads: 0, dist };
+        n = { key, cx, cy, cz, lod, state: 'queued', meshes: [], quads: 0, dist, rebuild: false, rebuilding: false };
         this.nodes.set(key, n);
         this.queue.push(n);
       }
@@ -98,10 +104,10 @@ export class ChunkRenderer {
     for (let cx = x0; cx <= x1; cx++) for (let cy = y0; cy <= y1; cy++) for (let cz = z0; cz <= z1; cz++) visit(cx, cy, cz, maxLod);
     this.desired = desired;
 
-    // fronta: jen žádané; blízké a hrubé napřed
-    this.queue = this.queue.filter((n) => desired.has(n.key) && n.state === 'queued');
-    for (const n of this.queue) n.dist = n.dist / (1 << n.lod);
-    this.queue.sort((a, b) => a.dist - b.dist);
+    // fronta: jen žádané; přestavby po editaci první, pak blízké a hrubé
+    this.queue = this.queue.filter((n) => desired.has(n.key) && (n.state === 'queued' || n.rebuild));
+    const prio = (n: Node): number => (n.rebuild ? -1e9 : 0) + n.dist / (1 << n.lod);
+    this.queue.sort((a, b) => prio(a) - prio(b));
     this.prune();
   }
 
@@ -145,20 +151,43 @@ export class ChunkRenderer {
   }
 
   private dispose(n: Node): void {
-    if (n.mesh) { n.mesh.dispose(); this.stats.meshes--; this.stats.quads -= n.quads; }
+    this.dropMeshes(n);
+    if (n.lod === 0) this.world.dropBits(n.cx, n.cy, n.cz);
     this.nodes.delete(n.key);
+  }
+
+  private dropMeshes(n: Node): void {
+    for (const m of n.meshes) m.dispose();
+    this.stats.meshes -= n.meshes.length; this.stats.quads -= n.quads;
+    n.meshes = []; n.quads = 0;
+  }
+
+  /** Po world.setNodes: přestav dotčené LOD-0 chunky (nenačtené se přeskočí) */
+  invalidate(keys: Iterable<string>): void {
+    for (const k of keys) {
+      const n = this.nodes.get(k);
+      if (!n) continue;
+      if (n.state === 'queued') continue;           // job ještě nevyrazil → vezme nové editace
+      n.rebuild = true;
+      if (!this.queue.includes(n)) this.queue.unshift(n);
+    }
   }
 
   private pump(): void {
     while (this.idle.length && this.queue.length) {
       const n = this.queue.shift()!;
-      if (n.state !== 'queued' || !this.desired.has(n.key)) continue;
+      if (!this.desired.has(n.key)) continue;
+      if (n.rebuild) {
+        if (n.rebuilding || n.state === 'running') continue; // dojede a pak znovu
+        n.rebuild = false; n.rebuilding = true;
+      } else if (n.state !== 'queued') continue;
+      else n.state = 'running';
       const w = this.idle.pop()!;
       const id = this.nextJob++;
-      n.state = 'running';
       this.byJob.set(id, n);
-      const job: ChunkJob = { type: 'job', id, cx: n.cx, cy: n.cy, cz: n.cz, lod: n.lod, seed: this.seed };
-      w.postMessage(job);
+      const edits = n.lod === 0 ? this.world.edits.collect(n.cx, n.cy, n.cz) : undefined;
+      const job: ChunkJob = { type: 'job', id, cx: n.cx, cy: n.cy, cz: n.cz, lod: n.lod, seed: this.world.seed, edits };
+      w.postMessage(job, edits ? { transfer: [edits.buffer] } : undefined);
     }
     this.stats.queued = this.queue.length;
     this.stats.running = this.workers.length - this.idle.length;
@@ -176,24 +205,31 @@ export class ChunkRenderer {
       this.stats.jobMs = this.stats.jobMs * 0.9 + r.ms * 0.1;
       if (this.nodes.get(n.key) !== n) continue; // mezitím zahozen
       changed = true;
-      if (r.empty || !r.positions) { n.state = 'empty'; continue; }
+      n.rebuilding = false;
+      if (n.rebuild && !this.queue.includes(n)) this.queue.unshift(n); // další editace mezitím
+      const t0 = performance.now();
+      this.dropMeshes(n);
+      if (n.lod === 0) this.world.setBits(n.cx, n.cy, n.cz, r.solidBits);
+      if (r.empty) { n.state = 'empty'; continue; }
       uploads++;
-      n.mesh = this.buildMesh(n, r);
+      r.passes.forEach((p, i) => { if (p) n.meshes.push(this.buildMesh(n, p, i)); });
       n.quads = r.quads;
       n.state = 'ready';
-      this.stats.meshes++; this.stats.quads += r.quads;
+      this.stats.meshes += n.meshes.length; this.stats.quads += r.quads;
+      this.stats.uploadMs = Math.max(this.stats.uploadMs, performance.now() - t0);
     }
     if (changed) this.prune();
   }
 
-  private buildMesh(n: Node, r: ChunkResult): Mesh {
+  private buildMesh(n: Node, p: PassMesh, pass: number): Mesh {
     const size = CHUNK << n.lod;
     const m = new Mesh(n.key, this.scene);
-    m.setVerticesData(VertexBuffer.PositionKind, r.positions!, false, 3);
-    m.setVerticesData(VertexBuffer.ColorKind, r.colors!, false, 4);
-    m.setIndices(r.indices!);
-    m.position.set(n.cx * size, n.cy * size, n.cz * size);
-    m.material = this.material;
+    m.setVerticesData(VertexBuffer.PositionKind, p.positions, false, 3);
+    m.setVerticesData('data', p.data, false, 4);
+    m.setIndices(p.indices);
+    // node (x,y,z) zabírá [x−0.5, x+0.5] jako v Luanti; voxel 0 objemu je lem (−s)
+    m.position.set(n.cx * size - 0.5, n.cy * size - 0.5, n.cz * size - 0.5);
+    m.material = this.materials[pass];
     m.isPickable = false;
     m.doNotSyncBoundingInfo = true;
     m.computeWorldMatrix(true);

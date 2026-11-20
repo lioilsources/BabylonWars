@@ -10,14 +10,17 @@
     "test": "vitest run",
     "lint": "eslint src test scripts",
     "gate": "npm run lint && npm run test && npm run build",
-    "sync-assets": "tsx scripts/sync-assets.ts"
+    "sync-assets": "tsx scripts/sync-assets.ts",
+    "textures": "tsx scripts/build-textures.ts"
   },
   "dependencies": {
     "@babylonjs/core": "^9.37.1"
   },
   "devDependencies": {
     "@types/node": "^26.6.6",
+    "@types/pngjs": "^6.0.5",
     "eslint": "^10.15.0",
+    "pngjs": "^7.0.0",
     "tsx": "^4.23.15",
     "typescript": "^6.0.3",
     "typescript-eslint": "^8.73.0",

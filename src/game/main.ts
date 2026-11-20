@@ -21,7 +21,10 @@ import { InputManager } from './input/input-manager';
 import { KeyboardMouse } from './input/keyboard-mouse';
 import { TouchInput } from './input/touch';
 import { isTouch, loadSettings, saveSettings, TUNING, type Quality } from './settings';
-import { createVoxelMaterial } from './voxel.material';
+import { createVoxelMaterials } from './voxel.material';
+import { VoxelWorld } from '../voxel/world';
+import { raycast, newHit } from '../voxel/raycast';
+import { AIR } from '../voxel/registry';
 import './hud/hud.css';
 
 const BASE = import.meta.env.BASE_URL;
@@ -53,15 +56,16 @@ async function boot(): Promise<void> {
   const rig = new CameraRig(scene);
   rig.setView(settings.view);
 
-  const voxelMat = createVoxelMaterial(scene, SKY);
+  const mats = await createVoxelMaterials(scene, BASE, SKY);
+  const world = new VoxelWorld(seed);
   const q = TUNING.quality[settings.quality];
-  const chunks = new ChunkRenderer(scene, voxelMat, seed, { r0: q.r0, maxLod: q.maxLod, uploadsPerFrame: q.uploads });
+  const chunks = new ChunkRenderer(scene, mats.passes, world, { r0: q.r0, maxLod: q.maxLod, uploadsPerFrame: q.uploads });
 
   const applyQuality = (ql: Quality): void => {
     const t = TUNING.quality[ql];
     chunks.configure({ r0: t.r0, maxLod: t.maxLod, uploadsPerFrame: t.uploads });
     engine.setHardwareScalingLevel(1 / Math.min(devicePixelRatio || 1, t.scaleCap));
-    voxelMat.setFloat('fogDensity', 1.3 / chunks.viewDistance);
+    mats.setFog(1.3 / chunks.viewDistance);
     rig.camera.maxZ = chunks.viewDistance * 1.5;
   };
   applyQuality(settings.quality);
@@ -134,7 +138,21 @@ async function boot(): Promise<void> {
   let acc = 0;
   const rPos = vec3(), rAtt = quat(), camAtt = quat(), tmp = vec3();
   const wv = new Vector3();
-  let hudT = 0, frames = 0, worstMs = 0;
+  let hudT = 0, frames = 0, worstMs = 0, fireCd = 0;
+  const hit = newHit();
+
+  // Ladicí střela (do F5): paprsek po zaměřovači vykousne kouli r = 3.
+  // Ověřuje world.setNodes → přestavbu chunků bez propadu FPS.
+  function debugCarve(): void {
+    raycast(world.isSolid, ship.pos.x, ship.pos.y, ship.pos.z, ship.aim.x, ship.aim.y, ship.aim.z, 400, hit);
+    if (!hit.hit) return;
+    const batch: number[] = [];
+    const R = 3;
+    for (let x = -R; x <= R; x++) for (let y = -R; y <= R; y++) for (let z = -R; z <= R; z++) {
+      if (x * x + y * y + z * z <= R * R + 1) batch.push(hit.x + x, hit.y + y, hit.z + z, AIR);
+    }
+    chunks.invalidate(world.setNodes(batch));
+  }
 
   engine.runRenderLoop(() => {
     const dt = Math.min(engine.getDeltaTime() / 1000, 0.25);
@@ -147,6 +165,8 @@ async function boot(): Promise<void> {
       qcopy(prevAtt, ship.att);
       input.frameTicks(frame, t, ticks, TICK_DT);
       stepFighter(ship, frame, TICK_DT, settings.horizonTilt);
+      fireCd -= TICK_DT;
+      if (frame.fire && fireCd <= 0) { fireCd = 0.25; debugCarve(); }
     }
     acc -= ticks * TICK_DT;
     const alpha = acc / TICK_DT;
@@ -179,13 +199,13 @@ async function boot(): Promise<void> {
       stats.textContent =
         `${fps.toFixed(0)} FPS · max ${worstMs.toFixed(0)} ms · ${instr.drawCallsCounter.current} DC\n`
         + `${(chunks.stats.quads * 2 / 1000).toFixed(0)}k tri · ${chunks.stats.meshes} chunků · fronta ${chunks.stats.queued}+${chunks.stats.running}`
-        + ` · job ${chunks.stats.jobMs.toFixed(1)} ms\n`
+        + ` · job ${chunks.stats.jobMs.toFixed(1)} ms · upload ${chunks.stats.uploadMs.toFixed(1)} ms\n`
         + `${engine.getRenderWidth()}×${engine.getRenderHeight()}${gamepad.connected ? ' · gamepad' : ''}`;
       const deg = (r: number): string => (r * 180 / Math.PI).toFixed(0);
       let hdg = headingAngle(ship.att) * 180 / Math.PI; if (hdg < 0) hdg += 360;
       flight.textContent = `SPD ${ship.speed.toFixed(0)}  ALT ${ship.pos.y.toFixed(0)}  HDG ${hdg.toFixed(0)}°`
         + `  P ${deg(pitchAngle(ship.att))}°  B ${deg(bankAngle(ship.att))}°${ship.boostTime > 0 ? '  BOOST' : ''}`;
-      hudT = 0; frames = 0; worstMs = 0;
+      hudT = 0; frames = 0; worstMs = 0; chunks.stats.uploadMs = 0;
     }
   });
 
@@ -201,7 +221,7 @@ async function boot(): Promise<void> {
   }
 
   addEventListener('resize', () => engine.resize());
-  (window as unknown as { bw: unknown }).bw = { engine, scene, ship, chunks, settings, input, instr };
+  (window as unknown as { bw: unknown }).bw = { engine, scene, ship, chunks, settings, input, instr, world };
 }
 
 boot().catch((e) => {

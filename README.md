@@ -14,6 +14,9 @@ s letadlem** (to Luanti neumí). Luanti verze dál žije ve svém repu.
 | Nahoru / dolů | Space / Shift | RB / LT | — |
 | Boost | E / pravé tlačítko | A / LB | BOOST |
 
+Levé tlačítko myši / RT / FIRE zatím střílí ladicí paprsek, který vykousne do
+ostrova kouli (ověření editací světa; skutečné zbraně přijdou v F5).
+
 Přepínače: **C** řízení (`free` → `direct` → `classic`), **T** náklon horizontu
 (100 / 50 / 0 %), **V** pohled (za letadlem / z nosu), **Q** kvalita, **R** respawn.
 Na telefonu jsou stejná tlačítka vpravo nahoře. Seed světa: `?seed=12345`.
@@ -30,7 +33,19 @@ z profilů, vlastní šum, greedy mesher s LOD (voxel 1–8 bloků podle vzdále
 ve workerech, stíhačka z `.obj`, let `free`/`direct`, kamera se slerpem horizontu
 a interpolací mezi ticky, klávesnice/myš, gamepad, dotyk, FPS a draw cally v rohu.
 
-Zatím chybí (další fáze): kolize, textury, AO, dekorace, zvuk, HUD podle `hud.lua`.
+## Stav: F1 (voxelová vrstva)
+
+Hotovo: registr nodů podle `dw_nodes` a `dw_core/nodes.lua` (jména zachovaná, drawtypy
+normal / allfaces / glasslike / plantlike / firelike / nodebox / liquid), texture array
+16×16 z PNG (`npm run textures` → `public/assets/blocks.png`), greedy mesher s AO
+a analytickým světlem (spodky ostrovů a tunely tmavé bez flood-fillu), tři průchody
+(opaque bez discard / cutout / průhledný), bity pro kolize, raycast (DDA), tažená
+koule, editace světa s přestavbou dotčených chunků.
+
+Měření (M2, Chrome, 60 Hz): let 60 m/s přes ostrovy — 1 frame z 600 nad 25 ms,
+upload meshe ≤ 2 za frame.
+
+Zatím chybí (další fáze): kolize lodi (F3), dekorace a tekutiny (F2), zvuk a HUD (F4).
 
 ### Měření brány F0
 
@@ -47,6 +62,7 @@ npm run dev          # http://localhost:5173, na LAN i pro telefon
 npm run gate         # lint + testy + typecheck + build
 cp .env.example .env # DOGGIOWARS_DIR = klon DoggioWars
 npm run sync-assets  # assety z DoggioWars do public/assets
+npm run textures     # texture array z public/assets/textures
 ```
 
 Licence: kód MIT, assety v `public/assets/` (z DoggioWars) CC BY-SA 4.0 — viz `LICENSE`.
