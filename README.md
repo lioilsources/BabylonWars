@@ -10,20 +10,25 @@ s letadlem** (to Luanti neumí). Luanti verze dál žije ve svém repu.
 |---|---|---|---|
 | Míření | myš (klikni do hry) | pravá páčka | tah pravým palcem |
 | Plyn | W / S | levá páčka ↑↓ | levý joystick ↑↓ |
-| Náklon | A / D | levá páčka ↔ | levý joystick ↔ |
-| Nahoru / dolů | Space / Shift | RB / LT | — |
-| Boost | E / pravé tlačítko | A / LB | BOOST |
+| Náklon (ponorka: úkrok) | A / D | levá páčka ↔ | levý joystick ↔ |
+| Nahoru / dolů | Space / Shift | RB / LT | ▲ / ▼ |
+| Výkrut (`direct`, ponorka) | Q / E | d-pad ← → | — |
+| Boost | F / pravé tlačítko / 2× W | A / LB | BOOST |
+| Střelba (zatím ladicí paprsek) | levé tlačítko | RT | FIRE |
 
-Levé tlačítko myši / RT / FIRE zatím střílí ladicí paprsek, který vykousne do
-ostrova kouli (ověření editací světa; skutečné zbraně přijdou v F5).
-
-Přepínače: **C** řízení (`free` → `direct` → `classic`), **T** náklon horizontu
-(100 / 50 / 0 %), **V** pohled (za letadlem / z nosu), **Q** kvalita, **R** respawn.
-Na telefonu jsou stejná tlačítka vpravo nahoře. Seed světa: `?seed=12345`.
+Přepínače: **M** ponorka / stíhačka (výchozí ponorka jako v Luanti), **C** řízení
+(`free` → `direct` → `classic`), **T** náklon horizontu, **V** pohled, **O** kvalita,
+**R** domů, **/** příkazy. Na telefonu jsou stejná tlačítka vpravo nahoře.
+Seed světa: `?seed=12345`.
 
 - `free` — myš táhne zaměřovač v prostoru, letadlo ho honí; looping uletíš tahem nahoru.
-- `direct` — myš/páčka = úhlové rychlosti, A/D výkrut, žádné samosrovnávání.
-- `classic` — zaměřovač s Luanti stropem pohledu (plná parita přijde v F3).
+- `direct` — myš/páčka = úhlové rychlosti, Q/E výkrut, žádné samosrovnávání.
+- `classic` — model z `vehicle.lua` 1:1: strop sklonu, auto-náklon, drift (S + A/D),
+  skriptované triky: 2× A/D výkrut, držet Space looping, 2× S Immelmann.
+- Ve `free`/`direct` se ručně uletěný výkrut a looping bodují stejně (detekce z letu).
+
+Levé tlačítko zatím střílí ladicí paprsek, který vykousne do ostrova kouli
+(ověření editací světa; skutečné zbraně přijdou v F5).
 
 ## Stav: F0 (spike, brána výkonu)
 
@@ -63,7 +68,15 @@ Příkazy (konzole na **/**, na telefonu tlačítko „/“): `/island <biom>`, 
 Rozpočty (M2, u ostrova verdant): `low` 92 DC / 481k tri, `medium` 166 / 1,0 M,
 `high` 226 / 1,5 M.
 
-Zatím chybí (další fáze): kolize lodi (F3), zvuk a HUD (F4).
+## Stav: F3 (simulace)
+
+Hotovo: ponorka (5DoF hover, v `direct` i výkrut), stíhačka ve třech presetech, kolize
+tažené koule r = 1,5 se sklouznutím po terénu, poškození nárazem (nad 15 m/s), zničení
+s kráterem a respawn u nejbližšího ostrova po 3 s, boost (metr 0–100, 25 za použití),
+nabíjení boostu těsně u terénu, triky a komba (×5), skóre. Simulace je v `src/sim/`
+bez Babylonu a testuje se headless (`test/flight.test.ts`).
+
+Zatím chybí (další fáze): zvuk a plný HUD (F4), zbraně a monstra (F5).
 
 ### Měření brány F0
 

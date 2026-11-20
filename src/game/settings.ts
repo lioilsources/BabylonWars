@@ -1,12 +1,14 @@
 // Nastavení hráče + laditelné konstanty klienta (jediný zdroj).
-import type { ControlPreset } from '../sim/flight';
+import type { ControlPreset, ShipMode } from '../sim/flight';
 
 export type ViewMode = 'nose' | 'chase';
 export type Quality = 'low' | 'medium' | 'high';
 
 export interface Settings {
+  mode: ShipMode;            // /mode: ponorka (výchozí jako v Luanti) / stíhačka
   control: ControlPreset;
-  horizonTilt: number;       // 0 … 1
+  horizonTilt: number;       // 0 … 1 (stíhačka)
+  subTilt: number;           // 0 … 1 (ponorka)
   view: ViewMode;
   quality: Quality;
   mouseSens: number;         // rad / px
@@ -28,11 +30,11 @@ export const TUNING = {
   fov: 1.15,                 // rad (≈ 66°)
 } as const;
 
-const KEY = 'babylonwars.settings.v1';
+const KEY = 'babylonwars.settings.v2';
 const isTouch = typeof matchMedia !== 'undefined' && matchMedia('(pointer: coarse)').matches;
 
 export const defaults = (): Settings => ({
-  control: 'free', horizonTilt: 1, view: 'chase',
+  mode: 'sub', control: 'free', horizonTilt: 1, subTilt: 0.3, view: 'chase',
   quality: isTouch ? 'low' : 'high', mouseSens: 0.0022, invertY: false,
 });
 
