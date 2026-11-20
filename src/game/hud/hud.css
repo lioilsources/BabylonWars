@@ -32,3 +32,16 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: #8cbff2; tou
 #console-log { position: absolute; left: 50%; bottom: 110px; transform: translateX(-50%); margin: 0; max-width: calc(100vw - 32px);
   white-space: pre-wrap; text-shadow: var(--shadow); display: none; text-align: center; }
 #console-log.open { display: block; }
+#flash { position: absolute; top: 28%; left: 50%; transform: translateX(-50%) scale(0.9); font-size: 26px; font-weight: bold;
+  text-shadow: 0 2px 4px #000c; opacity: 0; transition: opacity .15s, transform .15s; white-space: nowrap; }
+#flash.on { opacity: 1; transform: translateX(-50%) scale(1); }
+#bars { position: absolute; left: max(8px, env(safe-area-inset-left)); bottom: max(12px, env(safe-area-inset-bottom)); display: grid; gap: 4px; width: 130px; }
+.bar { position: relative; height: 12px; background: #0005; border: 1px solid #fff6; border-radius: 3px; overflow: hidden; }
+.bar i { position: absolute; inset: 0 auto 0 0; background: #8fe3a0; }
+.bar.boost i { background: #66ccff; }
+.bar span { position: absolute; left: 4px; top: -1px; font-size: 9px; text-shadow: var(--shadow); }
+#score { font-size: 18px; font-weight: bold; text-shadow: var(--shadow); }
+#hud.touch #bars { bottom: auto; top: 64px; }
+.btn-up, .btn-down { width: 46px; height: 46px; right: max(20px, env(safe-area-inset-right)); }
+.btn-up { bottom: max(200px, env(safe-area-inset-bottom)); }
+.btn-down { bottom: max(146px, env(safe-area-inset-bottom)); }

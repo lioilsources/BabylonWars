@@ -1,6 +1,7 @@
-// Gamepad API, standardní mapování. Levá páčka: X náklon, Y plyn.
-// Pravá páčka: zaměřovač. RT střelba, A / LB boost, RB nahoru, LT dolů.
-import type { InputFrame } from '../../sim/input';
+// Gamepad API, standardní mapování.
+// Levá páčka: X náklon/úkrok, Y plyn · pravá páčka: zaměřovač
+// RT střelba · A / LB boost · RB nahoru · LT dolů · d-pad ←/→ výkrut
+import { BTN, type InputFrame } from '../../sim/input';
 import { TUNING } from '../settings';
 import type { InputDevice } from './input-manager';
 
@@ -24,14 +25,19 @@ export class GamepadInput implements InputDevice {
     const p = this.pad;
     if (!p) return;
     const a = p.axes, b = (i: number): number => p.buttons[i]?.value ?? 0;
-    f.roll += dz(a[0] ?? 0);
-    f.thrust += -dz(a[1] ?? 0);
+    const lx = dz(a[0] ?? 0), ly = -dz(a[1] ?? 0);
+    f.strafe += lx;
+    f.thrust += ly;
     const rx = dz(a[2] ?? 0), ry = dz(a[3] ?? 0);
     // kvadratická křivka = jemné míření u středu
     f.aimDX += rx * Math.abs(rx) * TUNING.gamepadAimRate * dt;
     f.aimDY += -ry * Math.abs(ry) * TUNING.gamepadAimRate * dt;
-    f.vertical += b(5) - b(6); // RB nahoru, LT dolů
-    f.fire ||= b(7) > 0.5;
-    f.boost ||= b(0) > 0.5 || b(4) > 0.5;
+    f.vertical += b(5) - b(6);
+    f.roll += b(15) - b(14);
+    const fire = b(7) > 0.5, place = b(0) > 0.5 || b(4) > 0.5;
+    f.fire ||= fire;
+    f.boost ||= place;
+    f.buttons |= (ly > 0.5 ? BTN.UP : 0) | (ly < -0.5 ? BTN.DOWN : 0) | (lx < -0.5 ? BTN.LEFT : 0) | (lx > 0.5 ? BTN.RIGHT : 0)
+      | (b(5) > 0.5 ? BTN.JUMP : 0) | (b(6) > 0.5 ? BTN.SNEAK : 0) | (place ? BTN.PLACE : 0) | (fire ? BTN.FIRE : 0);
   }
 }

@@ -1,6 +1,7 @@
-// Klávesnice + myš (Pointer Lock). W/S plyn, A/D náklon, Space/Shift nahoru/dolů,
-// levé tlačítko střelba, E / pravé tlačítko boost.
-import type { InputFrame } from '../../sim/input';
+// Klávesnice + myš (Pointer Lock).
+// W/S plyn · A/D náklon (ponorka úkrok) · Space/Shift nahoru/dolů · Q/E výkrut
+// levé tlačítko střelba · pravé tlačítko / F boost (dvojťuk W taky)
+import { BTN, type InputFrame } from '../../sim/input';
 import type { Settings } from '../settings';
 import type { InputDevice, InputManager } from './input-manager';
 
@@ -14,7 +15,7 @@ export class KeyboardMouse implements InputDevice {
       if (e.repeat) return;
       this.keys.add(e.code);
       this.onKey(e.code);
-      if (e.code === 'Space' || e.code.startsWith('Arrow')) e.preventDefault();
+      if (e.code === 'Space' || e.code.startsWith('Arrow') || e.code === 'Slash') e.preventDefault();
     });
     window.addEventListener('keyup', (e) => this.keys.delete(e.code));
     window.addEventListener('blur', () => { this.keys.clear(); this.buttons = 0; });
@@ -33,11 +34,19 @@ export class KeyboardMouse implements InputDevice {
 
   fill(f: InputFrame): void {
     const k = this.keys;
-    const ax = (a: string, b: string): number => (k.has(a) ? 1 : 0) - (k.has(b) ? 1 : 0);
-    f.thrust += ax('KeyW', 'KeyS') + ax('ArrowUp', 'ArrowDown');
-    f.roll += ax('KeyD', 'KeyA') + ax('ArrowRight', 'ArrowLeft');
-    f.vertical += ax('Space', 'ShiftLeft');
-    f.fire ||= (this.buttons & 1) !== 0;
-    f.boost ||= k.has('KeyE') || (this.buttons & 4) !== 0;
+    const on = (...codes: string[]): boolean => codes.some((c) => k.has(c));
+    const up = on('KeyW', 'ArrowUp'), down = on('KeyS', 'ArrowDown');
+    const left = on('KeyA', 'ArrowLeft'), right = on('KeyD', 'ArrowRight');
+    const jump = on('Space'), sneak = on('ShiftLeft', 'ShiftRight');
+    f.thrust += (up ? 1 : 0) - (down ? 1 : 0);
+    f.strafe += (right ? 1 : 0) - (left ? 1 : 0);
+    f.vertical += (jump ? 1 : 0) - (sneak ? 1 : 0);
+    f.roll += (on('KeyE') ? 1 : 0) - (on('KeyQ') ? 1 : 0);
+    const fire = (this.buttons & 1) !== 0;
+    const place = (this.buttons & 4) !== 0 || on('KeyF');
+    f.fire ||= fire;
+    f.boost ||= place;
+    f.buttons |= (up ? BTN.UP : 0) | (down ? BTN.DOWN : 0) | (left ? BTN.LEFT : 0) | (right ? BTN.RIGHT : 0)
+      | (jump ? BTN.JUMP : 0) | (sneak ? BTN.SNEAK : 0) | (place ? BTN.PLACE : 0) | (fire ? BTN.FIRE : 0);
   }
 }

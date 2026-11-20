@@ -7,6 +7,7 @@ export interface CommandContext {
   pos(): { x: number; y: number; z: number };
   teleport(x: number, y: number, z: number, yaw?: number): void;
   say(msg: string): void;
+  setMode(mode: 'sub' | 'fighter'): void;
 }
 
 type Handler = (args: string[], ctx: CommandContext) => void;
@@ -34,6 +35,14 @@ const COMMANDS: Record<string, { help: string; run: Handler }> = {
       const [x, y, z] = args.map(Number);
       if ([x, y, z].some((v) => !Number.isFinite(v))) { ctx.say('Použití: /goto x y z'); return; }
       ctx.teleport(x, y, z);
+    },
+  },
+  mode: {
+    help: '/mode [sub|fighter] — ponorka / stíhačka (bez argumentu přepne)',
+    run: (args, ctx) => {
+      const m = (args[0] ?? '').toLowerCase();
+      if (m === 'sub' || m === 'fighter') ctx.setMode(m);
+      else ctx.say('Použití: /mode sub | /mode fighter');
     },
   },
   seed: {

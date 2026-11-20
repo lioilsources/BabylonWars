@@ -189,3 +189,17 @@ export function nearestIslandOfBiome(x: number, z: number, biome: string, seed: 
   }
   return best ? { isl: best, dist: bestd } : null;
 }
+
+/** Spawn u nejbližšího ostrova k (x,z), fallback domov (mapgen.lua spawn_pos_near) */
+export function spawnPosNear(x: number, z: number, seed: number): { x: number; y: number; z: number; yaw: number } {
+  const ccx = Math.floor(x / ISLAND_GRID), ccz = Math.floor(z / ISLAND_GRID);
+  let best: Island | null = null, bestd = Infinity;
+  for (let dcx = -2; dcx <= 2; dcx++) for (let dcz = -2; dcz <= 2; dcz++) {
+    const isl = cachedIsland(ccx + dcx, ccz + dcz, seed);
+    if (!isl) continue;
+    const d = (isl.x - x) ** 2 + (isl.z - z) ** 2;
+    if (d < bestd) { bestd = d; best = isl; }
+  }
+  best ??= islandForCell(0, 0, seed);
+  return best ? frameSpawn(best, x, z) : { x: 0, y: ISLAND_LAYER_MIN + 60, z: 0, yaw: 0 };
+}

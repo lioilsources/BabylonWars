@@ -1,6 +1,6 @@
-// Dotyk: levý virtuální joystick (X náklon, Y plyn), tah pravým palcem
-// = zaměřovač, tlačítka střelba / boost.
-import type { InputFrame } from '../../sim/input';
+// Dotyk: levý virtuální joystick (X náklon/úkrok, Y plyn), tah pravým palcem
+// = zaměřovač, tlačítka střelba / boost / nahoru / dolů.
+import { BTN, type InputFrame } from '../../sim/input';
 import { TUNING } from '../settings';
 import type { InputDevice, InputManager } from './input-manager';
 
@@ -12,6 +12,8 @@ export class TouchInput implements InputDevice {
   private aimLast = { x: 0, y: 0 };
   private fire = false;
   private boost = false;
+  private up = false;
+  private down = false;
   private knob: HTMLElement;
   private base: HTMLElement;
 
@@ -23,6 +25,8 @@ export class TouchInput implements InputDevice {
     const boostBtn = el(root, 'btn btn-boost', 'BOOST');
     hold(fireBtn, (v) => { this.fire = v; });
     hold(boostBtn, (v) => { this.boost = v; });
+    hold(el(root, 'btn btn-up', '▲'), (v) => { this.up = v; });
+    hold(el(root, 'btn btn-down', '▼'), (v) => { this.down = v; });
 
     const zone = root.querySelector<HTMLElement>('#touch-zone')!;
     zone.addEventListener('pointerdown', (e) => {
@@ -64,10 +68,14 @@ export class TouchInput implements InputDevice {
   }
 
   fill(f: InputFrame): void {
-    f.roll += this.stick.x;
-    f.thrust += this.stick.y;
+    const { x, y } = this.stick;
+    f.strafe += x;
+    f.thrust += y;
+    f.vertical += (this.up ? 1 : 0) - (this.down ? 1 : 0);
     f.fire ||= this.fire;
     f.boost ||= this.boost;
+    f.buttons |= (y > 0.5 ? BTN.UP : 0) | (y < -0.5 ? BTN.DOWN : 0) | (x < -0.5 ? BTN.LEFT : 0) | (x > 0.5 ? BTN.RIGHT : 0)
+      | (this.up ? BTN.JUMP : 0) | (this.down ? BTN.SNEAK : 0) | (this.boost ? BTN.PLACE : 0) | (this.fire ? BTN.FIRE : 0);
   }
 }
 
