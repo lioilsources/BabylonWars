@@ -16,10 +16,13 @@ s letadlem** (to Luanti neumí). Luanti verze dál žije ve svém repu.
 | Boost | F / pravé tlačítko / 2× W | A / LB | BOOST |
 | Střelba (zatím ladicí paprsek) | levé tlačítko | RT | FIRE |
 
+| Mapa | Z | Back / View | Mapa |
+| Nastavení | Esc | Start / Menu | ⚙ |
+
 Přepínače: **M** ponorka / stíhačka (výchozí ponorka jako v Luanti), **C** řízení
 (`free` → `direct` → `classic`), **T** náklon horizontu, **V** pohled, **O** kvalita,
-**R** domů, **/** příkazy. Na telefonu jsou stejná tlačítka vpravo nahoře.
-Seed světa: `?seed=12345`.
+**L** světlomet, **R** domů, **/** příkazy. Všechno je i v panelu nastavení (Esc, ⚙),
+včetně jazyka (cs/en), hlasitosti, radaru a vodováhy. Seed světa: `?seed=12345`.
 
 - `free` — myš táhne zaměřovač v prostoru, letadlo ho honí; looping uletíš tahem nahoru.
 - `direct` — myš/páčka = úhlové rychlosti, Q/E výkrut, žádné samosrovnávání.
@@ -76,7 +79,24 @@ s kráterem a respawn u nejbližšího ostrova po 3 s, boost (metr 0–100, 25 z
 nabíjení boostu těsně u terénu, triky a komba (×5), skóre. Simulace je v `src/sim/`
 bez Babylonu a testuje se headless (`test/flight.test.ts`).
 
-Zatím chybí (další fáze): zvuk a plný HUD (F4), zbraně a monstra (F5).
+## Stav: F4 (HUD, zvuk, obloha)
+
+Hotovo: HUD podle `hud.lua` (kompasová páska, kurz, SPD/ALT/VS, trup 20 dílků, boost
+10 dílků, skóre s kombem, sklon/náklon, vodováha jen ve stíhačce, flash hlášky),
+radar ostrovů (natočený podle kurzu, 512 m), mapa světa na **Z** (1 400 m, sever
+nahoře), panel nastavení, úvodní obrazovka, čeština a angličtina (`/lang`).
+Obloha podle `sky.lua`: tmavě modrá, věčné poledne, slunce, měsíc, hvězdy, řídké
+mraky ve výškách 1 500 a −500, mlha do barvy horizontu. Světlomet je kužel přímo
+ve voxel shaderu (svítí jen do stínu, jako v Luanti). Vzdálené ostrovy jako
+impostory z analytického profilu, jeden draw call; hranice voxely × impostory je
+koule s ditherem. Dohled: `low` 1,2 km, `medium` 1,6 km, `high` 2 km.
+Zvuk: hudba biomů s 6 s crossfadem a hysterezí (`music.lua`), výstřel a náraz.
+Ogg, kde to prohlížeč umí, jinak `.m4a` (`npm run sync-assets -- --sounds`).
+
+Příkazy navíc: `/music`, `/headlight`, `/radar`, `/map`, `/lang`.
+
+Rozpočty s impostory (M2, start u domova): `low` 94 DC / 451k tri, `medium` 156 / 889k,
+`high` 225 / 1,3 M; 60 FPS ve všech.
 
 ### Měření brány F0
 
@@ -92,7 +112,7 @@ npm install
 npm run dev          # http://localhost:5173, na LAN i pro telefon
 npm run gate         # lint + testy + typecheck + build
 cp .env.example .env # DOGGIOWARS_DIR = klon DoggioWars
-npm run sync-assets  # assety z DoggioWars do public/assets
+npm run sync-assets  # assety z DoggioWars do public/assets (-- --sounds i zvuky + m4a, potřebuje ffmpeg)
 npm run textures     # texture array z public/assets/textures
 ```
 

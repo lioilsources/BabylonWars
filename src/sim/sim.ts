@@ -107,7 +107,7 @@ export class Sim {
     this.events.push(
       { type: 'explode', x: p.x, y: p.y, z: p.z, r: 5 },
       { type: 'died' },
-      { type: 'flash', text: 'Stíhačka zničena! Respawn…', color: '#FF6A50' },
+      { type: 'flash', text: 'DESTROYED! Respawn…', color: '#FF6A50' },
     );
   }
 

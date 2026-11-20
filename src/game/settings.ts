@@ -1,5 +1,6 @@
 // Nastavení hráče + laditelné konstanty klienta (jediný zdroj).
 import type { ControlPreset, ShipMode } from '../sim/flight';
+import { defaultLang, type Lang } from './i18n';
 
 export type ViewMode = 'nose' | 'chase';
 export type Quality = 'low' | 'medium' | 'high';
@@ -13,6 +14,14 @@ export interface Settings {
   quality: Quality;
   mouseSens: number;         // rad / px
   invertY: boolean;
+  lang: Lang;
+  music: boolean;
+  musicVolume: number;       // 0 … 1 (dw_music_volume v Luanti = 0.6)
+  sfxVolume: number;         // 0 … 1
+  headlight: boolean;
+  radar: boolean;
+  attitude: boolean;         // vodováha (jen stíhačka)
+  stats: boolean;
 }
 
 export const TUNING = {
@@ -28,6 +37,17 @@ export const TUNING = {
   chaseOffset: { x: 0, y: 2.5, z: -10 },
   chaseStiffness: 18,        // 1/s, kriticky tlumená pružina
   fov: 1.15,                 // rad (≈ 66°)
+  // Impostory vzdálených ostrovů (plán §10): dohled podle kvality
+  impostorRange: { low: 1200, medium: 1600, high: 2000 },
+  impostorSegments: { low: 20, medium: 28, high: 32 },
+  impostorRings: 14,
+  // Světlomet (headlight.lua: kužel 20°, dosah 32 m — u nás měkčí okraj)
+  headlight: { range: 48, cosOuter: Math.cos(26 * Math.PI / 180), cosInner: Math.cos(14 * Math.PI / 180) },
+  // Hudba (music.lua)
+  music: { checkInterval: 1, enterMargin: 120, leaveMargin: 220, fade: 6 },
+  // Radar (minimapa Luanti, surface 256) a mapa (map.lua)
+  radarRange: 512,
+  mapRange: 1400,
 } as const;
 
 const KEY = 'babylonwars.settings.v2';
@@ -36,6 +56,8 @@ const isTouch = typeof matchMedia !== 'undefined' && matchMedia('(pointer: coars
 export const defaults = (): Settings => ({
   mode: 'sub', control: 'free', horizonTilt: 1, subTilt: 0.3, view: 'chase',
   quality: isTouch ? 'low' : 'high', mouseSens: 0.0022, invertY: false,
+  lang: defaultLang(), music: true, musicVolume: 0.6, sfxVolume: 0.8,
+  headlight: true, radar: true, attitude: true, stats: false,
 });
 
 export function loadSettings(): Settings {
