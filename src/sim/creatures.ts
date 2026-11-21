@@ -179,6 +179,18 @@ export class Creatures {
     return c;
   }
 
+  /** Odstraní tvora podle id (chatbridge TTL); true, když existoval */
+  despawn(id: number): boolean {
+    const c = this.list.find((q) => q.id === id);
+    if (!c) return false;
+    for (const [k, g] of this.groups) if (g.includes(c)) { const r = g.filter((q) => q !== c); if (r.length) this.groups.set(k, r); else this.groups.delete(k); }
+    if (this.whale === c) this.whale = null;
+    this.remove(new Set([c]));
+    return true;
+  }
+
+  has(id: number): boolean { return this.list.some((c) => c.id === id); }
+
   private remove(set: Set<Creature>): void {
     for (let i = this.list.length - 1; i >= 0; i--) if (set.has(this.list[i])) this.list.splice(i, 1);
   }

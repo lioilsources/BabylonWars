@@ -11,7 +11,8 @@
     "lint": "eslint src test scripts",
     "gate": "npm run lint && npm run test && npm run build",
     "sync-assets": "tsx scripts/sync-assets.ts",
-    "textures": "tsx scripts/build-textures.ts"
+    "textures": "tsx scripts/build-textures.ts",
+    "icons": "tsx scripts/build-icons.ts"
   },
   "dependencies": {
     "@babylonjs/core": "^9.37.1"

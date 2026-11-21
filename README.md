@@ -118,6 +118,21 @@ dál než 420 m od hráče (v Luanti je maže engine mimo aktivní bloky).
 Měření (M2, high, souvislá palba do domovského ostrova): 59–60 FPS, ojedinělý
 frame ~90 ms, 44 tisíc editací bez poklesu.
 
+## Stav: F6 (PWA, Twitch)
+
+Hotovo: hra jde nainstalovat jako aplikace (manifest, ikony, celá obrazovka na šířku)
+a běží offline. Service worker při instalaci uloží kód, textury a model (~2 MB),
+zvuky (33 MB) si ukládá až při prvním přehrání. Nový deploy se projeví při dalším
+načtení stránky, bez ručního mazání cache. Ikony: `npm run icons`.
+
+Twitch chat přes službu [chatbridge](https://github.com/lioilsources/chatbridge) (port
+`mods/chatbridge`): `?bridge=<url>` v adrese nebo `/bridge <url>` (uloží se),
+`/bridge off`, `/chatoff` (vypne akce a uklidí, co chat přivolal), `/chaton`.
+Chat umí přivolat monstra (`doggiowars:<druh>`, počet max 10, TTL), do 40 m od
+spawnu nic nepustí. Služba musí posílat `Access-Control-Allow-Origin`; z hry na
+Pages (HTTPS) na službu v lokální síti navíc Chrome chce
+`Access-Control-Allow-Private-Network: true`.
+
 ### Měření brány F0
 
 | Zařízení | Kvalita | FPS | Draw cally | Trojúhelníky |
