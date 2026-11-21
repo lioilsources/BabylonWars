@@ -103,7 +103,9 @@ Rozpočty s impostory (M2, start u domova): `low` 94 DC / 451k tri, `medium` 156
 | Zařízení | Kvalita | FPS | Draw cally | Trojúhelníky |
 |---|---|---|---|---|
 | MacBook (M2, Chrome, 60 Hz displej) | high | 60 (strop vsync) | 60–115 | ~600 k |
-| _telefon (doplní Ol1n)_ | low | | | |
+| iPhone 12 mini (Safari, render 375×664) | low | 56 (nejhorší frame ~42 ms) | — (167 meshů) | 264 k |
+
+Brána F0 splněna (cíl ≥ 30 FPS na `low`), měřeno na verzi F3.
 
 ## Vývoj
 
