@@ -1,0 +1,92 @@
+# Release Android → AAB + APK (GitHub Release, Firebase App Distribution).
+# Podle Distribution golden (keystore ze secrets), místo Flutteru web build + Capacitor.
+# AAB nahrává Olin do Google Play (firemní účet → rovnou produkce).
+name: Release Android
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-android:
+    name: Build & Release Android
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Web build + Capacitor sync
+        run: |
+          npm ci
+          npm run build
+          npx cap sync android
+
+      - name: Version from tag
+        run: |
+          # Tag je verze: v1.2.3 nebo v1.2.3-beta -> 1.2.3; ruční běh bez tagu nechá verzi z build.gradle.
+          TAG="${GITHUB_REF_NAME#v}"
+          TAG="${TAG%%-*}"
+          ARGS="-PversionCode=${{ github.run_number }}"
+          if [[ "$GITHUB_REF_TYPE" == "tag" && "$TAG" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            ARGS="$ARGS -PversionName=$TAG"
+          fi
+          echo "GRADLE_VERSION_ARGS=$ARGS" >> $GITHUB_ENV
+          echo "Build version: $ARGS"
+
+      - name: Create keystore and key.properties
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          echo -n "$KEYSTORE_BASE64" | tr -d '[:space:]' | base64 --decode --ignore-garbage > android/app/release.keystore
+          printf "storePassword=%s\nkeyPassword=%s\nkeyAlias=%s\nstoreFile=release.keystore\n" "$KEYSTORE_PASSWORD" "$KEY_PASSWORD" "$KEY_ALIAS" > android/key.properties
+
+      - name: Build release AAB + APK
+        working-directory: android
+        run: ./gradlew bundleRelease assembleRelease --no-daemon $GRADLE_VERSION_ARGS
+
+      - name: Verify APK signing certificate
+        run: |
+          APK=android/app/build/outputs/apk/release/app-release.apk
+          $ANDROID_HOME/build-tools/$(ls $ANDROID_HOME/build-tools | sort -V | tail -1)/apksigner verify --print-certs "$APK" | head -20
+
+      - name: Upload to GitHub Release
+        if: startsWith(github.ref, 'refs/tags/')
+        continue-on-error: true
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            android/app/build/outputs/bundle/release/app-release.aab
+            android/app/build/outputs/apk/release/app-release.apk
+          name: DoggioWars ${{ github.ref_name }}
+          tag_name: ${{ github.ref_name }}
+          draft: false
+          prerelease: true
+
+      - name: Upload to Firebase App Distribution
+        uses: wzieba/Firebase-Distribution-Github-Action@v1
+        with:
+          appId: ${{ secrets.FIREBASE_ANDROID_APP_ID }}
+          serviceCredentialsFileContent: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_KEY }}
+          groups: Alfa
+          releaseNotes: "DoggioWars ${{ github.ref_name }} (build ${{ github.run_number }})"
+          file: android/app/build/outputs/apk/release/app-release.apk

@@ -28,6 +28,12 @@ const ROWS: Opt[] = [
   { key: 'stats', label: 'set.stats', kind: 'check' },
 ];
 
+const ABOUT_LINKS = {
+  source: 'https://github.com/lioilsources/BabylonWars',
+  privacy: 'https://lioilsources.github.io/BabylonWars/privacy.html',
+  license: 'https://creativecommons.org/licenses/by-sa/4.0/',
+};
+
 export class SettingsPanel {
   readonly el: HTMLElement;
   private body: HTMLElement;
@@ -103,6 +109,22 @@ export class SettingsPanel {
     const help = document.createElement('p');
     help.className = 'keys';
     help.textContent = `${t('help.keys')}\n${t('help.keys2')}`;
+    // autoři a licence (CC BY-SA vyžaduje uvedení i v obchodních buildech)
+    const about = document.createElement('details');
+    about.className = 'about';
+    const sum = document.createElement('summary');
+    sum.textContent = t('about.title');
+    const txt = document.createElement('p');
+    txt.textContent = t('about.text');
+    const links = document.createElement('p');
+    for (const [k, href] of [['about.source', ABOUT_LINKS.source], ['about.privacy', ABOUT_LINKS.privacy], ['CC BY-SA 4.0', ABOUT_LINKS.license]] as const) {
+      const a = document.createElement('a');
+      a.href = href; a.target = '_blank'; a.rel = 'noopener';
+      a.textContent = k.startsWith('about.') ? t(k as I18nKey) : k;
+      links.append(a, ' ');
+    }
+    about.append(sum, txt, links);
+    b.append(about);
     const close = document.createElement('button');
     close.textContent = t('set.close');
     close.addEventListener('click', () => this.close());
