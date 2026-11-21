@@ -30,6 +30,11 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: #2e3155; tou
 #flash { position: absolute; top: 35%; left: 50%; transform: translate(-50%, -50%) scale(.9); font-size: 34px; font-weight: bold;
   text-shadow: 0 2px 4px #000c; opacity: 0; transition: opacity .15s, transform .15s; white-space: nowrap; }
 #flash.on { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+/* závod (race.lua: časomíra y 0.09, info 0.125, waypoint CP) */
+#race-timer { position: absolute; top: 9%; left: 50%; transform: translateX(-50%); font-size: 26px; font-weight: bold; text-shadow: var(--shadow); }
+#race-info { position: absolute; top: 12.5%; left: 50%; transform: translate(-50%, 8px); color: #ffd75e; font-size: 14px; white-space: pre; text-shadow: var(--shadow); }
+#race-wp::before { content: '◇'; position: absolute; left: -9px; top: -14px; font-size: 20px; color: #66ff88; text-shadow: 0 0 4px #000; }
+#race-wp span { position: absolute; left: -30px; width: 60px; top: 10px; text-align: center; color: #66ff88; font-size: 11px; text-shadow: var(--shadow); }
 /* radar vpravo nahoře, vodováha pod ním (hud.lua ATT_POS y = 0.38) */
 #radar { position: absolute; top: calc(max(8px, env(safe-area-inset-top)) + 36px); right: max(12px, env(safe-area-inset-right)); width: min(170px, 26vmin); height: min(170px, 26vmin); }
 #level { position: absolute; top: 38%; right: calc(max(16px, env(safe-area-inset-right)) + 94px); width: 0; height: 0; }

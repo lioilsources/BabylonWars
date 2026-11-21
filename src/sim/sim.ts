@@ -8,6 +8,8 @@ import type { InputFrame } from './input';
 import { v3copy, vec3, type Vec3 } from './math';
 import { award, checkTriggers, createPilot, detectTricks, stepTrick, updateInput, updatePassive, type Pilot, type SimEvent, type TrickEvents } from './tricks';
 import type { WorldQuery } from './world-query';
+import { startRace, type Race } from './race';
+import { Weapons } from './weapons';
 
 export const SHIP_RADIUS = 1.5;
 const RESPAWN_DELAY = 3;
@@ -19,10 +21,12 @@ export class Sim {
   dead = false;
   respawnTimer = 0;
   readonly events: SimEvent[] = [];
+  readonly weapons = new Weapons();
+  race: Race | null = null;
   private te: TrickEvents = { tap: 0, double: 0, holdJump: 0 };
   private from: Vec3 = vec3();
 
-  constructor(private world: WorldQuery, spawn: { x: number; y: number; z: number; yaw: number }, mode: ShipMode, control: ControlPreset) {
+  constructor(private world: WorldQuery, spawn: { x: number; y: number; z: number; yaw: number }, mode: ShipMode, control: ControlPreset, readonly seed = 0) {
     this.ship = createShip(vec3(spawn.x, spawn.y, spawn.z), spawn.yaw, mode);
     this.ship.control = control;
     this.liftClear();
@@ -41,11 +45,14 @@ export class Sim {
   tick(inp: InputFrame, horizonTilt: number, dt = TICK_DT): void {
     this.time += dt;
     const s = this.ship, now = this.time, ev = this.events;
+    this.weapons.step(dt, this.world.isSolid, ev);
+    if (this.race && !this.race.step(dt, s.pos, this.pilot, ev)) this.race = null;
     if (this.dead) {
       this.respawnTimer -= dt;
       if (this.respawnTimer <= 0) this.respawn();
       return;
     }
+    if (inp.fire) this.weapons.fire(s, ev);
     const e = updateInput(this.pilot, inp.buttons, now, this.te);
     s.iframes = Math.max(0, s.iframes - dt);
     s.crashCooldown = Math.max(0, s.crashCooldown - dt);
@@ -109,6 +116,11 @@ export class Sim {
       { type: 'died' },
       { type: 'flash', text: 'DESTROYED! Respawn…', color: '#FF6A50' },
     );
+    // smrt během závodu = konec závodu
+    if (this.race && !this.race.finished) {
+      this.race = null;
+      this.events.push({ type: 'flash', text: 'RACE FAILED', color: '#FF5040' }, { type: 'race_end', ok: false, time: 0, cp: 0, cpTotal: 0, score: 0 });
+    }
   }
 
   respawn(at?: { x: number; y: number; z: number; yaw: number }): void {
@@ -144,6 +156,21 @@ export class Sim {
     s.heading = Math.atan2(f.x, f.z);
     s.pitch = Math.asin(Math.max(-1, Math.min(1, f.y)));
     s.roll = 0;
+  }
+
+  /** /race: trať od lodi ve směru letu; v ponorce přepne na stíhačku */
+  startRace(): void {
+    if (this.dead) return;
+    if (this.ship.mode === 'sub') this.setMode('fighter');
+    const s = this.ship;
+    const fx = 2 * (s.att.x * s.att.z + s.att.w * s.att.y), fz = 1 - 2 * (s.att.x * s.att.x + s.att.y * s.att.y);
+    this.race = startRace(s.pos, fx, fz, this.seed, Math.floor(this.time * 1000), this.events);
+  }
+
+  stopRace(): boolean {
+    const had = this.race !== null;
+    this.race = null;
+    return had;
   }
 
   /** Ruční ocenění (závod, zajíc …) */

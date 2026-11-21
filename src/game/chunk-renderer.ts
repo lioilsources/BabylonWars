@@ -157,7 +157,7 @@ export class ChunkRenderer {
 
   private dispose(n: Node): void {
     this.dropMeshes(n);
-    if (n.lod === 0) this.world.dropBits(n.cx, n.cy, n.cz);
+    if (n.lod === 0) this.world.dropChunk(n.cx, n.cy, n.cz);
     this.nodes.delete(n.key);
   }
 
@@ -168,8 +168,15 @@ export class ChunkRenderer {
   }
 
   /** Po world.setNodes: přestav dotčené LOD-0 chunky (nenačtené se přeskočí) */
+  /** Editace (klíče LOD-0 chunků) → přestavět i hrubší chunky, které je obsahují */
   invalidate(keys: Iterable<string>): void {
+    const all = new Set<string>();
     for (const k of keys) {
+      all.add(k);
+      const [, x, y, z] = k.split(':').map(Number);
+      for (let l = 1; l <= this.settings.maxLod; l++) all.add(keyStr(x >> l, y >> l, z >> l, l));
+    }
+    for (const k of all) {
       const n = this.nodes.get(k);
       if (!n) continue;
       if (n.state === 'queued') continue;           // job ještě nevyrazil → vezme nové editace
@@ -190,7 +197,7 @@ export class ChunkRenderer {
       const w = this.idle.pop()!;
       const id = this.nextJob++;
       this.byJob.set(id, n);
-      const edits = n.lod === 0 ? this.world.edits.collect(n.cx, n.cy, n.cz) : undefined;
+      const edits = this.world.edits.collect(n.cx, n.cy, n.cz, n.lod);
       const job: ChunkJob = { type: 'job', id, cx: n.cx, cy: n.cy, cz: n.cz, lod: n.lod, seed: this.world.seed, edits };
       w.postMessage(job, edits ? { transfer: [edits.buffer] } : undefined);
     }
@@ -214,7 +221,7 @@ export class ChunkRenderer {
       if (n.rebuild && !this.queue.includes(n)) this.queue.unshift(n); // další editace mezitím
       const t0 = performance.now();
       this.dropMeshes(n);
-      if (n.lod === 0) this.world.setBits(n.cx, n.cy, n.cz, r.solidBits);
+      if (n.lod === 0) this.world.setChunkNodes(n.cx, n.cy, n.cz, r.nodes);
       if (r.empty) { n.state = 'empty'; continue; }
       uploads++;
       r.passes.forEach((p, i) => { if (p) n.meshes.push(this.buildMesh(n, p, i)); });

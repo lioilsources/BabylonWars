@@ -11,6 +11,8 @@ const SKY = 'sky';
 
 interface Track { el: HTMLAudioElement; gain: GainNode; theme: string }
 
+export interface LoopSound { setPos(x: number, y: number, z: number): void; stop(): void }
+
 export class AudioSys {
   private ctx: AudioContext | null = null;
   private musicBus: GainNode | null = null;
@@ -92,6 +94,46 @@ export class AudioSys {
       src.connect(g).connect(bus);
       src.start();
     });
+  }
+
+  /**
+   * Smyčka připnutá k pozici (monsters.lua creature_sound): lineární útlum
+   * do `hear` metrů. null, dokud není zvuk odemčený nebo soubor chybí.
+   */
+  loop(name: string, gain: number, hear: number): LoopSound | null {
+    const ctx = this.ctx, bus = this.sfxBus;
+    if (!ctx || !bus || ctx.state !== 'running' || this.variants.get(name) === undefined) return null;
+    const panner = ctx.createPanner();
+    panner.panningModel = 'equalpower';
+    panner.distanceModel = 'linear';
+    panner.refDistance = 6;
+    panner.maxDistance = hear;
+    const g = ctx.createGain();
+    g.gain.value = gain;
+    g.connect(panner).connect(bus);
+    let src: AudioBufferSourceNode | null = null, stopped = false;
+    void this.load(name).then((buf) => {
+      if (!buf || stopped) return;
+      src = ctx.createBufferSource();
+      src.buffer = buf;
+      src.loop = true;
+      src.connect(g);
+      src.start(0, Math.random() * buf.duration);
+    });
+    return {
+      setPos: (x, y, z) => { panner.positionX.value = x; panner.positionY.value = y; panner.positionZ.value = -z; },
+      stop: () => { stopped = true; src?.stop(); panner.disconnect(); },
+    };
+  }
+
+  /** Posluchač = kamera (pozice, dopředu, nahoru) */
+  setListener(x: number, y: number, z: number, fx: number, fy: number, fz: number, ux: number, uy: number, uz: number): void {
+    const l = this.ctx?.listener;
+    if (!l || !l.positionX) return;
+    // Babylon je levotočivý, WebAudio pravotočivý → z otočit
+    l.positionX.value = x; l.positionY.value = y; l.positionZ.value = -z;
+    l.forwardX.value = fx; l.forwardY.value = fy; l.forwardZ.value = -fz;
+    l.upX.value = ux; l.upY.value = uy; l.upZ.value = -uz;
   }
 
   /** Volá se každý frame; téma se přepočítá jednou za checkInterval */

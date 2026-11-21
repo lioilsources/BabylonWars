@@ -14,8 +14,7 @@ s letadlem** (to Luanti neumí). Luanti verze dál žije ve svém repu.
 | Nahoru / dolů | Space / Shift | RB / LT | ▲ / ▼ |
 | Výkrut (`direct`, ponorka) | Q / E | d-pad ← → | — |
 | Boost | F / pravé tlačítko / 2× W | A / LB | BOOST |
-| Střelba (zatím ladicí paprsek) | levé tlačítko | RT | FIRE |
-
+| Střelba | levé tlačítko | RT | FIRE |
 | Mapa | Z | Back / View | Mapa |
 | Nastavení | Esc | Start / Menu | ⚙ |
 
@@ -30,8 +29,7 @@ včetně jazyka (cs/en), hlasitosti, radaru a vodováhy. Seed světa: `?seed=123
   skriptované triky: 2× A/D výkrut, držet Space looping, 2× S Immelmann.
 - Ve `free`/`direct` se ručně uletěný výkrut a looping bodují stejně (detekce z letu).
 
-Levé tlačítko zatím střílí ladicí paprsek, který vykousne do ostrova kouli
-(ověření editací světa; skutečné zbraně přijdou v F5).
+Střely provrtávají do ostrovů tunely (Ø 8, stíhačka jimi proletí); tři rány ≈ 45 bloků.
 
 ## Stav: F0 (spike, brána výkonu)
 
@@ -97,6 +95,28 @@ Příkazy navíc: `/music`, `/headlight`, `/radar`, `/map`, `/lang`.
 
 Rozpočty s impostory (M2, start u domova): `low` 94 DC / 451k tri, `medium` 156 / 889k,
 `high` 225 / 1,3 M; 60 FPS ve všech.
+
+## Stav: F5 (zbraně, monstra, závod)
+
+Hotovo: střelba podle `weapons.lua` (120 m/s, kadence 0,15 s, kulka z nosu) a vrtání
+tunelů kapslí r = 4 ve směru letu; zničená stíhačka vyhloubí kráter. Sutina padá jako
+kostky v barvě zasaženého nodu (max 140), oheň a stopy kulek jsou částice ve stylu
+Luanti (jednobarevné čtverečky, jeden draw call). Zvuk zásahu podle převažujícího
+materiálu. Editace se promítají i do vzdálených (hrubších) chunků.
+Monstra podle `monsters.lua`: draci pěti živlů s loopingy, písečný červ, kamenný
+strážce, medúzy a toulavá velryba; osazenstvo podle biomu, prostorové smyčky zvuků,
+tečky na radaru a mapě. `/race` podle `race.lua` + `rabbit.lua`: trať přes 10–14
+ostrovů (slalom, výkrut, orbit, tunel, stoupání a pád), zlatý zajíc s rubber-bandem
+a čekáním, checkpointy s prstenci, časomíra, tunely skrz ostrovy, oslava v cíli.
+
+Příkazy navíc: `/race`, `/race stop`, `/monster <druh>`.
+
+Rozdíly proti Luanti (vědomé): tekutiny a písek se po zásahu nesypou, výšku letu
+monstra počítají z profilu ostrova (dekorace jako sopečný kužel nevidí), monstra mizí
+dál než 420 m od hráče (v Luanti je maže engine mimo aktivní bloky).
+
+Měření (M2, high, souvislá palba do domovského ostrova): 59–60 FPS, ojedinělý
+frame ~90 ms, 44 tisíc editací bez poklesu.
 
 ### Měření brány F0
 

@@ -32,20 +32,29 @@ export class EditStore {
     return dirty;
   }
 
-  /** Editace pro objem chunku vč. lemu jako dvojice [volIndex, id] */
-  collect(cx: number, cy: number, cz: number): Int32Array | undefined {
+  /**
+   * Editace pro objem chunku vč. lemu jako dvojice [volIndex, id]. Chunk LOD L
+   * vzorkuje svět po s = 2^L blocích (generator.ts) — bere jen editace, které
+   * leží na jeho mřížce, takže díra je vidět i z dálky (zhruba).
+   */
+  collect(cx: number, cy: number, cz: number, lod = 0): Int32Array | undefined {
+    const s = 1 << lod, size = CHUNK * s;
+    const ox = cx * size - s, oy = cy * size - s, oz = cz * size - s;
+    const maxW = (VOL - 1) * s;
     const out: number[] = [];
-    for (let ox = -1; ox <= 1; ox++) for (let oy = -1; oy <= 1; oy++) for (let oz = -1; oz <= 1; oz++) {
-      const m = this.chunks.get(keyStr(cx + ox, cy + oy, cz + oz, 0));
-      if (!m) continue;
-      for (const [li, id] of m) {
-        const lx = li % CHUNK, lz = fl(li / CHUNK) % CHUNK, ly = fl(li / (CHUNK * CHUNK));
-        // pozice ve volume souřadnicích (lem = 0)
-        const i = lx + ox * CHUNK + 1, j = ly + oy * CHUNK + 1, k = lz + oz * CHUNK + 1;
-        if (i < 0 || j < 0 || k < 0 || i >= VOL || j >= VOL || k >= VOL) continue;
-        out.push(volIndex(i, j, k), id);
-      }
-    }
+    for (let kx = fl(ox / CHUNK); kx <= fl((ox + maxW) / CHUNK); kx++)
+      for (let ky = fl(oy / CHUNK); ky <= fl((oy + maxW) / CHUNK); ky++)
+        for (let kz = fl(oz / CHUNK); kz <= fl((oz + maxW) / CHUNK); kz++) {
+          const m = this.chunks.get(keyStr(kx, ky, kz, 0));
+          if (!m) continue;
+          for (const [li, id] of m) {
+            const x = kx * CHUNK + li % CHUNK - ox, z = kz * CHUNK + fl(li / CHUNK) % CHUNK - oz, y = ky * CHUNK + fl(li / (CHUNK * CHUNK)) - oy;
+            if (x % s || y % s || z % s) continue;
+            const i = x / s, j = y / s, k = z / s;
+            if (i < 0 || j < 0 || k < 0 || i >= VOL || j >= VOL || k >= VOL) continue;
+            out.push(volIndex(i, j, k), id);
+          }
+        }
     return out.length ? Int32Array.from(out) : undefined;
   }
 
