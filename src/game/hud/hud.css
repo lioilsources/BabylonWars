@@ -61,6 +61,9 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: #2e3155; tou
 #settings select, #settings input[type=range] { width: 100%; font: inherit; }
 #settings select { background: #0006; color: #fff; border: 1px solid #fff4; border-radius: 4px; padding: 3px; }
 #settings input[type=checkbox] { justify-self: start; width: 18px; height: 18px; }
+#settings .about { margin: 10px 0; font-size: 12px; opacity: .85; }
+#settings .about summary { cursor: pointer; }
+#settings .about a { color: #ffd75e; margin-right: 10px; }
 #settings .keys { white-space: pre-wrap; font-size: 11px; opacity: .75; }
 #settings button { width: 100%; padding: 10px; font: inherit; font-size: 14px; background: #ffd75e; color: #161936; border: 0; border-radius: 6px; font-weight: bold; }
 

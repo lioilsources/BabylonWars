@@ -1,0 +1,41 @@
+# Gate na každé větvi a PR + debug build Android obálky (ověří nativní projekt).
+# Odchylka od Distribution golden: web stack (npm), ne Flutter.
+name: CI
+
+on:
+  push:
+    branches-ignore: [main]
+  pull_request:
+
+jobs:
+  gate:
+    name: Lint, tests, build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run gate
+
+  build-android-debug:
+    name: Android debug build
+    runs-on: ubuntu-latest
+    needs: gate
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - run: npm ci
+      - run: npm run build && npx cap sync android
+      - name: Assemble debug APK
+        working-directory: android
+        run: ./gradlew assembleDebug --no-daemon

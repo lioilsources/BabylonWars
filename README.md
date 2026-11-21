@@ -133,6 +133,16 @@ spawnu nic nepustí. Služba musí posílat `Access-Control-Allow-Origin`; z hry
 Pages (HTTPS) na službu v lokální síti navíc Chrome chce
 `Access-Control-Allow-Private-Network: true`.
 
+## Stav: F7 (App Store, Google Play)
+
+Hotovo: Capacitor obálka pro iOS a Android (`com.ol1n.doggiowars`, zdarma), jen na
+šířku a přes celou obrazovku, data v balíčku (offline, bez service workeru). Ikony a
+splash ze stejné pixel-art ikony, v nastavení „O hře a licence“, zásady
+[soukromí](https://lioilsources.github.io/BabylonWars/privacy.html) a
+[podpora](https://lioilsources.github.io/BabylonWars/support.html) na Pages.
+Release na tag `v*`: iOS → TestFlight, Android → AAB/APK (Google Play ručně).
+Postup a ruční kroky v účtech: [`docs/release.md`](docs/release.md).
+
 ### Měření brány F0
 
 | Zařízení | Kvalita | FPS | Draw cally | Trojúhelníky |
@@ -151,6 +161,7 @@ npm run gate         # lint + testy + typecheck + build
 cp .env.example .env # DOGGIOWARS_DIR = klon DoggioWars
 npm run sync-assets  # assety z DoggioWars do public/assets (-- --sounds i zvuky + m4a, potřebuje ffmpeg)
 npm run textures     # texture array z public/assets/textures
+npm run cap:sync     # build + Capacitor sync do ios/ a android/ (viz docs/release.md)
 ```
 
 Licence: kód MIT, assety v `public/assets/` (z DoggioWars) CC BY-SA 4.0 — viz `LICENSE`.

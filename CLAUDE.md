@@ -19,5 +19,8 @@ Odchylka od lang.md: komentáře v kódu česky (jako zdrojové repo DoggioWars,
 - Assety: `npm run sync-assets` (textury + model, `-- --sounds` i zvuky) do `public/assets/`.
 - LCG v `gen/lcg.ts` počítej v double s Lua modulem; žádný `Math.imul`/`BigInt`.
 
+## Obchody (F7)
+Capacitor `ios/`, `android/`; release na tag `v*`, postup a pasti v `docs/release.md`.
+
 ## Běh
 `npm run dev` (Vite, i na LAN pro telefon). Nástroje přes `tsx`, žádný bash.
