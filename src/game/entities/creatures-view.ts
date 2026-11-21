@@ -21,20 +21,26 @@ const loadImg = (url: string): Promise<HTMLImageElement> => new Promise((res, re
 
 async function atlas(base: string, def: SpeciesDef): Promise<string> {
   const [body, face] = await Promise.all([def.bodyTex, def.faceTex].map((t) => loadImg(`${base}assets/textures/${t}`)));
-  const cv = document.createElement('canvas');
-  cv.width = 32; cv.height = 16;
-  const ctx = cv.getContext('2d')!;
-  ctx.imageSmoothingEnabled = false;
-  ctx.drawImage(body, 0, 0, 16, 16);
-  ctx.drawImage(face, 16, 0, 16, 16);
+  const sheet = (): HTMLCanvasElement => {
+    const c = document.createElement('canvas');
+    c.width = 32; c.height = 16;
+    const x = c.getContext('2d')!;
+    x.imageSmoothingEnabled = false;
+    x.drawImage(body, 0, 0, 16, 16);
+    x.drawImage(face, 16, 0, 16, 16);
+    return c;
+  };
+  const cv = sheet();
   if (def.tint) {
-    // ^[multiply:#tint se zachováním průhlednosti
+    // ^[multiply:#tint se zachováním průhlednosti. Maska alfy jedním tahem z
+    // neobarvené kopie: dva destination-in (tělo, pak obličej) by se navzájem
+    // smazaly a celý atlas by byl průhledný.
+    const ctx = cv.getContext('2d')!;
     ctx.globalCompositeOperation = 'multiply';
     ctx.fillStyle = def.tint;
     ctx.fillRect(0, 0, 32, 16);
     ctx.globalCompositeOperation = 'destination-in';
-    ctx.drawImage(body, 0, 0, 16, 16);
-    ctx.drawImage(face, 16, 0, 16, 16);
+    ctx.drawImage(sheet(), 0, 0);
   }
   return cv.toDataURL();
 }
