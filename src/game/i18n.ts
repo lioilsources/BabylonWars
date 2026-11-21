@@ -37,6 +37,10 @@ const en = {
   'race.finished': 'Race finished in @1! Checkpoints @2/@3, score @4.', 'race.failed': 'Race failed — fighter destroyed.',
   'race.info': 'HARE @1 m  ·  CP @2/@3',
   'cmd.monster': '/monster <species> — spawn a monster nearby', 'cmd.monsters': 'Species: @1',
+  'cmd.bridge': '/bridge <url>|off — Twitch chat via the chatbridge service', 'cmd.chatoff': '/chatoff — stop chat actions and clear what chat spawned',
+  'cmd.chaton': '/chaton — resume chat actions',
+  'chat.off': 'Chat actions OFF, world cleared.', 'chat.on': 'Chat actions ON.',
+  'chat.status': 'chatbridge: @1 (@2)', 'chat.none': 'chatbridge off. Usage: /bridge <url>',
 };
 
 type Key = keyof typeof en;
@@ -76,6 +80,10 @@ const cs: Record<Key, string> = {
   'race.finished': 'Závod dokončen za @1! Checkpointy @2/@3, skóre @4.', 'race.failed': 'Závod nedokončen — stíhačka zničena.',
   'race.info': 'ZAJÍC @1 m  ·  CP @2/@3',
   'cmd.monster': '/monster <druh> — spawne monstrum poblíž', 'cmd.monsters': 'Druhy: @1',
+  'cmd.bridge': '/bridge <url>|off — Twitch chat přes službu chatbridge', 'cmd.chatoff': '/chatoff — vypnout akce z chatu a uklidit, co chat přivolal',
+  'cmd.chaton': '/chaton — zapnout akce z chatu',
+  'chat.off': 'Akce z chatu VYP, svět uklizen.', 'chat.on': 'Akce z chatu ZAP.',
+  'chat.status': 'chatbridge: @1 (@2)', 'chat.none': 'chatbridge vypnutý. Použití: /bridge <url>',
 };
 
 const DICT: Record<Lang, Record<Key, string>> = { en, cs };

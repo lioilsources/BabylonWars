@@ -47,11 +47,15 @@ import { TouchInput } from './input/touch';
 import { isTouch, loadSettings, saveSettings, TUNING, type Quality, type Settings } from './settings';
 import { FOG_COLOR, SKY_BASE, Sky } from './sky';
 import { createVoxelMaterials } from './voxel.material';
+import { registerServiceWorker } from './pwa';
+import { ChatBridge } from './twitch';
 import './hud/hud.css';
 
 const BASE = import.meta.env.BASE_URL;
 // ve vývoji varuj, když chybí import side effectu (jinak jsou to tiché stuby)
 if (import.meta.env.DEV) SetMissingSideEffectWarningsEnabled(true);
+
+registerServiceWorker(BASE);
 
 async function boot(): Promise<void> {
   const settings = loadSettings();
@@ -122,6 +126,13 @@ async function boot(): Promise<void> {
   const effects = new Effects(particles);
   const debris = new Debris(scene, mats.avg, effects, world.isSolid);
   const creatures = new Creatures(world.isSolid, seed);
+  const homeSpawn = frameSpawn(islandForCell(0, 0, seed)!);
+  const chat = new ChatBridge({
+    creatures,
+    player: () => (sim.dead ? null : sim.ship.pos),
+    protectCenter: vec3(homeSpawn.x, homeSpawn.y, homeSpawn.z),
+    notify: (m) => konsole.say(m),
+  });
 
   // Svět pro simulaci: editace → načtené bity → generátor
   const sw = newSweep();
@@ -207,6 +218,11 @@ async function boot(): Promise<void> {
     },
     stopRace: () => sim.stopRace(),
     species: SPECIES_NAMES,
+    setBridge: (url) => {
+      if (url !== null) { settings.bridgeUrl = url; save(); chat.connect(url); }
+      return chat.active ? t('chat.status', settings.bridgeUrl, chat.status) : t('chat.none');
+    },
+    setChat: (on) => chat.setEnabled(on),
     spawnMonster: (name) => {
       if (!(name in SPECIES)) return false;
       const s = sim.ship, f = vec3();
@@ -214,6 +230,11 @@ async function boot(): Promise<void> {
       return creatures.spawn(name as Species, s.pos.x + f.x * 30, s.pos.y + 5, s.pos.z + f.z * 30) !== null;
     },
   });
+
+  // chatbridge: ?bridge=URL v adrese má přednost a uloží se
+  const bridgeParam = params.get('bridge');
+  if (bridgeParam !== null) { settings.bridgeUrl = bridgeParam; save(); }
+  if (settings.bridgeUrl) chat.connect(settings.bridgeUrl);
 
   // Úvodní obrazovka: zmizí prvním gestem (zároveň odemkne zvuk)
   const start = document.getElementById('start')!;
@@ -353,6 +374,7 @@ async function boot(): Promise<void> {
       }
       if (fxT >= 0.1) fxT = 0;
     }
+    chat.update(dt, performance.now() / 1000);
     for (const f of creatures.fx) effects.creature(f.fx, f.x, f.y, f.z);
     creatures.fx.length = 0;
     acc -= ticks * TICK_DT;
@@ -462,7 +484,7 @@ async function boot(): Promise<void> {
   }
 
   addEventListener('resize', () => engine.resize());
-  (window as unknown as { bw: unknown }).bw = { engine, scene, sim, chunks, impostors, settings, input, instr, world, audio, map, panel, creatures, particles, debris };
+  (window as unknown as { bw: unknown }).bw = { engine, scene, sim, chunks, impostors, settings, input, instr, world, audio, map, panel, creatures, particles, debris, chat };
 }
 
 boot().catch((e) => {

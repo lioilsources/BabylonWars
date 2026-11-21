@@ -18,6 +18,9 @@ export interface CommandContext {
   stopRace(): boolean;
   spawnMonster(species: string): boolean;
   species: readonly string[];
+  /** chatbridge: '' = vypnout; vrací stav */
+  setBridge(url: string | null): string;
+  setChat(on: boolean): void;
 }
 
 const onOff = (a?: string): boolean | undefined => (a === 'on' ? true : a === 'off' ? false : undefined);
@@ -89,6 +92,15 @@ const COMMANDS: Record<string, { help: () => string; run: Handler }> = {
       if (!ctx.spawnMonster((args[0] ?? '').toLowerCase())) ctx.say(t('cmd.monsters', ctx.species.join(', ')));
     },
   },
+  bridge: {
+    help: () => t('cmd.bridge'),
+    run: (args, ctx) => {
+      const a = args[0];
+      ctx.say(ctx.setBridge(a === undefined ? null : a.toLowerCase() === 'off' ? '' : a));
+    },
+  },
+  chatoff: { help: () => t('cmd.chatoff'), run: (_a, ctx) => { ctx.setChat(false); ctx.say(t('chat.off')); } },
+  chaton: { help: () => t('cmd.chaton'), run: (_a, ctx) => { ctx.setChat(true); ctx.say(t('chat.on')); } },
   help: {
     help: () => '/help',
     run: (_a, ctx) => ctx.say(Object.values(COMMANDS).map((c) => c.help()).join('\n')),

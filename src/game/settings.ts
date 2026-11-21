@@ -22,6 +22,8 @@ export interface Settings {
   radar: boolean;
   attitude: boolean;         // vodováha (jen stíhačka)
   stats: boolean;
+  /** chatbridge (Twitch chat → hra); prázdné = vypnuto */
+  bridgeUrl: string;
 }
 
 export const TUNING = {
@@ -48,6 +50,8 @@ export const TUNING = {
   // Radar (minimapa Luanti, surface 256) a mapa (map.lua)
   radarRange: 512,
   mapRange: 1400,
+  // chatbridge/init.lua
+  chat: { pollInterval: 1, fetchTimeout: 5, maxEvents: 50, spawnRMin: 5, spawnRMax: 15, countCap: 10, protectRadius: 40 },
 } as const;
 
 const KEY = 'babylonwars.settings.v2';
@@ -57,7 +61,7 @@ export const defaults = (): Settings => ({
   mode: 'sub', control: 'free', horizonTilt: 1, subTilt: 0.3, view: 'chase',
   quality: isTouch ? 'low' : 'high', mouseSens: 0.0022, invertY: false,
   lang: defaultLang(), music: true, musicVolume: 0.6, sfxVolume: 0.8,
-  headlight: true, radar: true, attitude: true, stats: false,
+  headlight: true, radar: true, attitude: true, stats: false, bridgeUrl: '',
 });
 
 export function loadSettings(): Settings {
