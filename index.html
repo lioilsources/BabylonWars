@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
-  <meta name="theme-color" content="#8cbff2">
+  <meta name="theme-color" content="#2e3155">
   <title>DoggioWars Web</title>
 </head>
 <body>
@@ -11,21 +11,20 @@
   <div id="hud">
     <div id="touch-zone"></div>
     <pre id="stats"></pre>
-    <div id="flight"></div>
-    <div id="labels"></div>
     <div id="menu">
+      <button id="b-settings" title="Esc">⚙</button>
+      <button id="b-map" title="Z" data-i18n="menu.map">Mapa</button>
+      <button id="b-mode" title="M" data-i18n="menu.mode">Režim</button>
+      <button id="b-respawn" title="R" data-i18n="menu.respawn">Domů</button>
       <button id="b-console" title="/">/</button>
-      <button id="b-mode" title="M">režim</button>
-      <button id="b-preset" title="C">řízení</button>
-      <button id="b-tilt" title="T">horizont</button>
-      <button id="b-view" title="V">pohled</button>
-      <button id="b-quality" title="O">kvalita</button>
-      <button id="b-respawn" title="R">respawn</button>
     </div>
     <div id="aim" class="marker"></div>
     <div id="nose" class="marker"></div>
-    <div id="help">Klikni do hry · myš míří · W/S plyn · A/D náklon (ponorka úkrok) · Space/Shift nahoru/dolů · Q/E výkrut · F / pravé tl. boost<br>
-      M ponorka/stíhačka · C řízení · T horizont · V pohled · O kvalita · R domů · / příkazy</div>
+    <div id="start">
+      <h1 data-i18n="start.title">DoggioWars</h1>
+      <p class="go" id="start-go"></p>
+      <p class="keys"><span data-i18n="help.keys"></span><br><span data-i18n="help.keys2"></span></p>
+    </div>
     <div id="error"></div>
   </div>
   <script type="module" src="/src/game/main.ts"></script>

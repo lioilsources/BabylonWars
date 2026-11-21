@@ -1,6 +1,7 @@
 // Chat příkazy z Luanti jako konzole na „/“ (a tlačítko v menu na telefonu).
 import { BIOMES } from '../gen/biomes';
 import { frameSpawn, nearestIslandOfBiome } from '../gen/islands';
+import { t, type I18nKey } from './i18n';
 
 export interface CommandContext {
   seed: number;
@@ -8,57 +9,78 @@ export interface CommandContext {
   teleport(x: number, y: number, z: number, yaw?: number): void;
   say(msg: string): void;
   setMode(mode: 'sub' | 'fighter'): void;
+  /** přepínač z nastavení (music, headlight, radar); on = undefined přepne */
+  toggle(key: 'music' | 'headlight' | 'radar', on?: boolean): boolean;
+  toggleMap(): void;
+  setLang(lang: 'cs' | 'en'): void;
 }
+
+const onOff = (a?: string): boolean | undefined => (a === 'on' ? true : a === 'off' ? false : undefined);
+const toggleCmd = (key: 'music' | 'headlight' | 'radar', help: I18nKey): { help: () => string; run: Handler } => ({
+  help: () => t(help),
+  run: (args, ctx) => {
+    const on = ctx.toggle(key, onOff(args[0]?.toLowerCase()));
+    ctx.say(t(`${key}.${on ? 'on' : 'off'}` as I18nKey));
+  },
+});
 
 type Handler = (args: string[], ctx: CommandContext) => void;
 
-const COMMANDS: Record<string, { help: string; run: Handler }> = {
+const COMMANDS: Record<string, { help: () => string; run: Handler }> = {
   island: {
-    help: '/island <biom> — přílet k nejbližšímu ostrovu biomu',
+    help: () => t('cmd.island'),
     run: (args, ctx) => {
       const name = (args[0] ?? '').toLowerCase();
       if (!BIOMES.some((b) => b.name === name)) {
-        ctx.say(`Biomy: ${BIOMES.map((b) => b.name).join(', ')}`);
+        ctx.say(t('cmd.biomes', BIOMES.map((b) => b.name).join(', ')));
         return;
       }
       const p = ctx.pos();
       const r = nearestIslandOfBiome(p.x, p.z, name, ctx.seed);
-      if (!r) { ctx.say(`Žádný ostrov „${name}“ v okolí.`); return; }
+      if (!r) { ctx.say(t('cmd.noIsland', name)); return; }
       const s = frameSpawn(r.isl, p.x, p.z);
       ctx.teleport(s.x, s.y + 20, s.z, s.yaw);
-      ctx.say(`${name}: ostrov ${r.isl.x}, ${r.isl.y}, ${r.isl.z} (r ${r.isl.radius}, ${r.isl.shape}${r.isl.tunnels ? ', tunely' : ''})`);
+      ctx.say(`${name}: ${r.isl.x}, ${r.isl.y}, ${r.isl.z} (r ${r.isl.radius}, ${r.isl.shape}${r.isl.tunnels ? ', tunnels' : ''})`);
     },
   },
   goto: {
-    help: '/goto <x> <y> <z>',
+    help: () => t('cmd.goto'),
     run: (args, ctx) => {
       const [x, y, z] = args.map(Number);
-      if ([x, y, z].some((v) => !Number.isFinite(v))) { ctx.say('Použití: /goto x y z'); return; }
+      if ([x, y, z].some((v) => !Number.isFinite(v))) { ctx.say(t('cmd.gotoUsage')); return; }
       ctx.teleport(x, y, z);
     },
   },
   mode: {
-    help: '/mode [sub|fighter] — ponorka / stíhačka (bez argumentu přepne)',
+    help: () => t('cmd.mode'),
     run: (args, ctx) => {
       const m = (args[0] ?? '').toLowerCase();
       if (m === 'sub' || m === 'fighter') ctx.setMode(m);
-      else ctx.say('Použití: /mode sub | /mode fighter');
+      else ctx.say(t('cmd.modeUsage'));
     },
   },
   seed: {
-    help: '/seed — seed světa (jiný svět: ?seed=… v adrese)',
-    run: (_a, ctx) => ctx.say(`Seed: ${ctx.seed}`),
+    help: () => t('cmd.seedHelp'),
+    run: (_a, ctx) => ctx.say(t('cmd.seed', ctx.seed)),
+  },
+  music: toggleCmd('music', 'cmd.music'),
+  headlight: toggleCmd('headlight', 'cmd.headlight'),
+  radar: toggleCmd('radar', 'cmd.radar'),
+  map: { help: () => t('cmd.map'), run: (_a, ctx) => ctx.toggleMap() },
+  lang: {
+    help: () => t('cmd.lang'),
+    run: (args, ctx) => { const l = args[0]?.toLowerCase(); if (l === 'cs' || l === 'en') ctx.setLang(l); else ctx.say(t('cmd.lang')); },
   },
   help: {
-    help: '/help',
-    run: (_a, ctx) => ctx.say(Object.values(COMMANDS).map((c) => c.help).join('\n')),
+    help: () => '/help',
+    run: (_a, ctx) => ctx.say(Object.values(COMMANDS).map((c) => c.help()).join('\n')),
   },
 };
 
 export function runCommand(line: string, ctx: CommandContext): void {
   const [cmd, ...args] = line.replace(/^\//, '').trim().split(/\s+/);
   const c = COMMANDS[cmd?.toLowerCase() ?? ''];
-  if (!c) { ctx.say(`Neznámý příkaz: /${cmd}. Zkus /help`); return; }
+  if (!c) { ctx.say(t('cmd.unknown', cmd ?? '')); return; }
   c.run(args, ctx);
 }
 

@@ -203,3 +203,28 @@ export function spawnPosNear(x: number, z: number, seed: number): { x: number; y
   best ??= islandForCell(0, 0, seed);
   return best ? frameSpawn(best, x, z) : { x: 0, y: ISLAND_LAYER_MIN + 60, z: 0, yaw: 0 };
 }
+
+/** Nejbližší ostrov (mapgen.lua nearest_island) — hudba, radar */
+export function nearestIsland(x: number, z: number, seed: number): { isl: Island; dist: number } | null {
+  const ccx = Math.floor(x / ISLAND_GRID), ccz = Math.floor(z / ISLAND_GRID);
+  let best: Island | null = null, bestd = Infinity;
+  for (let dcx = -3; dcx <= 3; dcx++) for (let dcz = -3; dcz <= 3; dcz++) {
+    const isl = cachedIsland(ccx + dcx, ccz + dcz, seed);
+    if (!isl) continue;
+    const d = Math.hypot(isl.x - x, isl.z - z);
+    if (d < bestd) { bestd = d; best = isl; }
+  }
+  return best ? { isl: best, dist: bestd } : null;
+}
+
+/** Ostrovy v okruhu (mapa, radar, impostory) */
+export function islandsWithin(x: number, z: number, range: number, seed: number, out: Island[] = []): Island[] {
+  out.length = 0;
+  const c0x = Math.floor((x - range - RADIUS_MAX) / ISLAND_GRID), c1x = Math.floor((x + range + RADIUS_MAX) / ISLAND_GRID);
+  const c0z = Math.floor((z - range - RADIUS_MAX) / ISLAND_GRID), c1z = Math.floor((z + range + RADIUS_MAX) / ISLAND_GRID);
+  for (let cx = c0x; cx <= c1x; cx++) for (let cz = c0z; cz <= c1z; cz++) {
+    const isl = cachedIsland(cx, cz, seed);
+    if (isl && Math.hypot(isl.x - x, isl.z - z) - isl.radius <= range) out.push(isl);
+  }
+  return out;
+}

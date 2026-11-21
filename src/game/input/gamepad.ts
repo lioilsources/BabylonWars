@@ -1,6 +1,7 @@
 // Gamepad API, standardní mapování.
 // Levá páčka: X náklon/úkrok, Y plyn · pravá páčka: zaměřovač
 // RT střelba · A / LB boost · RB nahoru · LT dolů · d-pad ←/→ výkrut
+// Back/View mapa · Start/Menu nastavení
 import { BTN, type InputFrame } from '../../sim/input';
 import { TUNING } from '../settings';
 import type { InputDevice } from './input-manager';
@@ -14,11 +15,19 @@ const dz = (v: number): number => {
 export class GamepadInput implements InputDevice {
   private pad: Gamepad | null = null;
   connected = false;
+  private prev = 0;
+  /** hrana stisku: Back/View (8) mapa, Start/Menu (9) nastavení */
+  onPress: (button: number) => void = () => {};
 
   poll(): void {
     this.pad = null;
     for (const p of navigator.getGamepads?.() ?? []) if (p && p.connected) { this.pad = p; break; }
     this.connected = !!this.pad;
+    let now = 0;
+    if (this.pad) for (const i of [8, 9]) if (this.pad.buttons[i]?.pressed) now |= 1 << i;
+    const edge = now & ~this.prev;
+    this.prev = now;
+    for (const i of [8, 9]) if (edge & (1 << i)) this.onPress(i);
   }
 
   fill(f: InputFrame, dt: number): void {

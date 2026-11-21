@@ -1,16 +1,17 @@
-// Vstupní bod hry: svět (stream chunků), simulace lodi v pevném kroku,
-// kamera s nakloněným horizontem a interpolací mezi ticky, vstupy, HUD.
+// Vstupní bod hry: svět (stream chunků + impostory), simulace lodi v pevném
+// kroku, kamera s nakloněným horizontem a interpolací mezi ticky, obloha,
+// světlomet, zvuk, HUD, mapa a nastavení.
 import { Engine } from '@babylonjs/core/Engines/engine';
 import { Scene } from '@babylonjs/core/scene';
 import { HemisphericLight } from '@babylonjs/core/Lights/hemisphericLight';
-import { Color3, Color4 } from '@babylonjs/core/Maths/math.color';
+import { Color4 } from '@babylonjs/core/Maths/math.color';
 import { Vector3 } from '@babylonjs/core/Maths/math.vector';
 import { SceneInstrumentation } from '@babylonjs/core/Instrumentation/sceneInstrumentation';
 
 import { parseSeed } from '../gen/lcg';
-import { frameSpawn, islandForCell, spawnPosNear } from '../gen/islands';
+import { frameSpawn, islandForCell, nearestIsland, spawnPosNear } from '../gen/islands';
 import { TICK_DT } from '../sim/constants';
-import { cameraAttitude, type ControlPreset } from '../sim/flight';
+import { cameraAttitude, headingAngle, type ShipMode } from '../sim/flight';
 import { emptyInput } from '../sim/input';
 import { qaxis, qcopy, qslerp, quat, vec3, type Quat, type Vec3 } from '../sim/math';
 import { Sim } from '../sim/sim';
@@ -19,38 +20,44 @@ import { VoxelWorld } from '../voxel/world';
 import { raycast, newHit } from '../voxel/raycast';
 import { newSweep, sweepSphere } from '../voxel/sweep';
 import { AIR } from '../voxel/registry';
+import { AudioSys, impactMaterial } from './audio';
 import { CameraRig } from './camera-rig';
 import { ChunkRenderer } from './chunk-renderer';
 import { Console } from './commands';
 import { createFighter } from './entities/fighter';
 import { Hud } from './hud/hud';
+import { WorldMap } from './hud/map';
+import { SettingsPanel } from './hud/settings-panel';
+import { setLang, t } from './i18n';
+import { Impostors } from './impostors';
 import { GamepadInput } from './input/gamepad';
 import { InputManager } from './input/input-manager';
 import { KeyboardMouse } from './input/keyboard-mouse';
 import { TouchInput } from './input/touch';
-import { isTouch, loadSettings, saveSettings, TUNING, type Quality } from './settings';
+import { isTouch, loadSettings, saveSettings, TUNING, type Quality, type Settings } from './settings';
+import { FOG_COLOR, SKY_BASE, Sky } from './sky';
 import { createVoxelMaterials } from './voxel.material';
 import './hud/hud.css';
 
 const BASE = import.meta.env.BASE_URL;
-const SKY = new Color3(0.55, 0.75, 0.95);
 
 async function boot(): Promise<void> {
+  const settings = loadSettings();
+  setLang(settings.lang);
   const canvas = document.getElementById('game') as HTMLCanvasElement;
   const engine = new Engine(canvas, !isTouch, {
     stencil: false, preserveDrawingBuffer: false, powerPreference: 'high-performance',
   }, true);
   if (engine.webGLVersion < 2) {
-    document.getElementById('error')!.textContent = 'Tahle hra potřebuje WebGL2.';
+    document.getElementById('error')!.textContent = t('webgl2');
     return;
   }
 
-  const settings = loadSettings();
   const params = new URLSearchParams(location.search);
   const seed = parseSeed(params.get('seed') ?? '42');
 
   const scene = new Scene(engine);
-  scene.clearColor = new Color4(SKY.r, SKY.g, SKY.b, 1);
+  scene.clearColor = new Color4(SKY_BASE.r, SKY_BASE.g, SKY_BASE.b, 1);
   scene.skipPointerMovePicking = true;
   const light = new HemisphericLight('sun', new Vector3(0.3, 1, 0.2), scene);
   light.intensity = 0.9;
@@ -58,19 +65,33 @@ async function boot(): Promise<void> {
 
   const rig = new CameraRig(scene);
   rig.setView(settings.view);
+  const sky = new Sky(scene);
 
-  const mats = await createVoxelMaterials(scene, BASE, SKY);
+  const [mats, manifest] = await Promise.all([
+    createVoxelMaterials(scene, BASE, FOG_COLOR),
+    fetch(`${BASE}assets/manifest.json`).then((r) => r.json() as Promise<Record<string, string[]>>).catch(() => ({} as Record<string, string[]>)),
+  ]);
   const world = new VoxelWorld(seed);
   const q0 = TUNING.quality[settings.quality];
   const chunks = new ChunkRenderer(scene, mats.passes, world, { r0: q0.r0, maxLod: q0.maxLod, uploadsPerFrame: q0.uploads });
+  const impostors = new Impostors(scene, seed, FOG_COLOR);
   const applyQuality = (ql: Quality): void => {
-    const t = TUNING.quality[ql];
-    chunks.configure({ r0: t.r0, maxLod: t.maxLod, uploadsPerFrame: t.uploads });
-    engine.setHardwareScalingLevel(1 / Math.min(devicePixelRatio || 1, t.scaleCap));
-    mats.setFog(1.3 / chunks.viewDistance);
-    rig.camera.maxZ = chunks.viewDistance * 1.5;
+    const tq = TUNING.quality[ql];
+    chunks.configure({ r0: tq.r0, maxLod: tq.maxLod, uploadsPerFrame: tq.uploads });
+    engine.setHardwareScalingLevel(1 / Math.min(devicePixelRatio || 1, tq.scaleCap));
+    const range = TUNING.impostorRange[ql];
+    // mlha podle dohledu impostorů: na jeho konci ≈ 92 % barvy oblohy
+    const fog = 1.6 / range;
+    mats.setFog(fog);
+    mats.setCut(chunks.viewDistance);
+    impostors.configure(range, TUNING.impostorSegments[ql], TUNING.impostorRings, chunks.viewDistance, fog);
+    rig.camera.maxZ = range + 600;
+    sky.setRadius(range * 1.5);
   };
   applyQuality(settings.quality);
+
+  const audio = new AudioSys(BASE, manifest.sounds ?? [], { music: settings.musicVolume, sfx: settings.sfxVolume });
+  audio.musicOn = settings.music;
 
   const fighter = await createFighter(scene, BASE);
 
@@ -88,65 +109,108 @@ async function boot(): Promise<void> {
   const snapPrev = (): void => { const p = sim.ship.pos; prevPos.x = p.x; prevPos.y = p.y; prevPos.z = p.z; qcopy(prevAtt, sim.ship.att); };
   snapPrev();
 
-  // HUD a vstupy
+  // HUD, mapa, nastavení, vstupy
   const hudRoot = document.getElementById('hud')!;
-  const hud = new Hud(hudRoot);
+  if (isTouch) hudRoot.classList.add('touch');
+  const hud = new Hud(hudRoot, seed);
+  const map = new WorldMap(hudRoot, seed);
   const input = new InputManager();
   const tilt = (): number => (sim.ship.mode === 'sub' ? settings.subTilt : settings.horizonTilt);
 
-  const labels = document.getElementById('labels')!;
-  const updateLabels = (): void => {
-    labels.textContent = `${sim.ship.mode === 'sub' ? 'ponorka' : 'stíhačka'} · ${settings.control} · horizont ${Math.round(tilt() * 100)} % · ${settings.view} · ${settings.quality}`;
+  const statsEl = document.getElementById('stats')!;
+  const save = (): void => saveSettings(settings);
+  const setMode = (m: ShipMode, announce = true): void => {
+    settings.mode = m;
+    if (m !== sim.ship.mode) sim.setMode(m);
+    save();
+    if (announce) {
+      hud.flash(t(m === 'sub' ? 'mode.sub' : 'mode.fighter'), '#ffffff');
+      konsole.say(t(m === 'sub' ? 'mode.subHelp' : 'mode.fighterHelp'));
+    }
   };
-  const save = (): void => { saveSettings(settings); updateLabels(); };
+  const toggleMode = (): void => setMode(sim.ship.mode === 'sub' ? 'fighter' : 'sub');
   const toggleView = (): void => { settings.view = settings.view === 'nose' ? 'chase' : 'nose'; rig.setView(settings.view); save(); };
-  const presets: ControlPreset[] = ['free', 'direct', 'classic'];
-  const cyclePreset = (): void => {
-    settings.control = presets[(presets.indexOf(settings.control) + 1) % presets.length];
-    sim.setControl(settings.control); save();
-  };
-  const toggleMode = (): void => {
-    settings.mode = sim.ship.mode === 'sub' ? 'fighter' : 'sub';
-    sim.setMode(settings.mode); save();
-    hud.flash(settings.mode === 'sub' ? 'PONORKA' : 'STÍHAČKA', '#ffffff');
-  };
-  const tilts = [1, 0.5, 0.3, 0];
-  const cycleTilt = (): void => {
-    const key = sim.ship.mode === 'sub' ? 'subTilt' : 'horizonTilt';
-    settings[key] = tilts[(tilts.indexOf(settings[key]) + 1) % tilts.length] ?? 1; save();
-  };
-  const qualities: Quality[] = ['low', 'medium', 'high'];
-  const cycleQuality = (): void => {
-    settings.quality = qualities[(qualities.indexOf(settings.quality) + 1) % qualities.length];
-    applyQuality(settings.quality); save();
-  };
   const respawnHome = (): void => { sim.respawn(frameSpawn(home)); snapPrev(); chunks.dirty = true; };
   const teleport = (x: number, y: number, z: number, yaw?: number): void => {
     sim.respawn({ x, y, z, yaw: yaw ?? sim.ship.heading });
     snapPrev(); chunks.dirty = true;
   };
+
+  const onChange = (key: keyof Settings): void => {
+    switch (key) {
+      case 'lang': setLang(settings.lang); panel.render(); startText(); break;
+      case 'mode': setMode(settings.mode, false); break;
+      case 'control': sim.setControl(settings.control); break;
+      case 'view': rig.setView(settings.view); break;
+      case 'quality': applyQuality(settings.quality); break;
+      case 'music': audio.setMusic(settings.music); break;
+      case 'musicVolume': case 'sfxVolume': audio.setVolumes(settings.musicVolume, settings.sfxVolume); break;
+      case 'stats': statsEl.textContent = ''; break;
+      default: break;
+    }
+    save();
+  };
+  const panel = new SettingsPanel(hudRoot, settings, onChange);
+  const toggleSetting = (key: 'music' | 'headlight' | 'radar', on?: boolean): boolean => {
+    settings[key] = on ?? !settings[key];
+    onChange(key);
+    return settings[key];
+  };
+
+  // rychlé přepínače z klávesnice (totéž co v panelu nastavení)
+  const cycle = <K extends 'control' | 'subTilt' | 'horizonTilt' | 'quality'>(key: K, vals: Settings[K][]): void => {
+    const i = vals.indexOf(settings[key]);
+    settings[key] = vals[(i + 1) % vals.length];
+    onChange(key);
+    konsole.say(`${key}: ${String(settings[key])}`);
+  };
+
   const konsole: Console = new Console(hudRoot, {
     seed, teleport, pos: () => sim.ship.pos, say: (m) => konsole.say(m),
-    setMode: (m) => { if (m !== sim.ship.mode) toggleMode(); },
+    setMode: (m) => setMode(m),
+    toggle: toggleSetting,
+    toggleMap: () => map.toggle(),
+    setLang: (l) => { settings.lang = l; onChange('lang'); },
   });
+
+  // Úvodní obrazovka: zmizí prvním gestem (zároveň odemkne zvuk)
+  const start = document.getElementById('start')!;
+  const startText = (): void => { document.getElementById('start-go')!.textContent = t(isTouch ? 'start.tap' : 'start.click'); };
+  startText();
+  const hideStart = (): void => { start.classList.add('hidden'); };
+  for (const ev of ['pointerdown', 'keydown'] as const) addEventListener(ev, hideStart, { once: true });
+
+  // Esc uvolní pointer lock → otevři nastavení (menu; svět běží dál)
+  let ownUnlock = false;
+  const withUnlock = (fn: () => void) => (): void => { ownUnlock = true; fn(); setTimeout(() => { ownUnlock = false; }, 100); };
+  const openPanel = withUnlock(() => panel.open());
+  const openConsole = withUnlock(() => konsole.open());
+  document.addEventListener('pointerlockchange', () => {
+    if (!document.pointerLockElement && !ownUnlock && document.hasFocus() && !konsole.isOpen) panel.open();
+  });
+
   const onKey = (code: string): void => {
+    if (panel.isOpen) return;
     if (code === 'KeyV') toggleView();
-    else if (code === 'KeyC') cyclePreset();
-    else if (code === 'KeyT') cycleTilt();
     else if (code === 'KeyM') toggleMode();
-    else if (code === 'KeyO') cycleQuality();
+    else if (code === 'KeyZ') map.toggle();
+    else if (code === 'KeyL') konsole.say(t(toggleSetting('headlight') ? 'headlight.on' : 'headlight.off'));
     else if (code === 'KeyR') respawnHome();
-    else if (code === 'Slash' || code === 'NumpadDivide') konsole.open();
+    else if (code === 'KeyC') cycle('control', ['free', 'direct', 'classic']);
+    else if (code === 'KeyT') cycle(sim.ship.mode === 'sub' ? 'subTilt' : 'horizonTilt', [1, 0.5, 0.3, 0]);
+    else if (code === 'KeyO') cycle('quality', ['low', 'medium', 'high']);
+    else if (code === 'Escape') panel.toggle();
+    else if (code === 'Slash' || code === 'NumpadDivide') openConsole();
   };
   input.devices.push(new KeyboardMouse(canvas, input, settings, onKey));
   const gamepad = new GamepadInput();
+  gamepad.onPress = (b) => { if (b === 8) map.toggle(); else if (b === 9) panel.toggle(); };
   input.devices.push(gamepad);
   if (isTouch) input.devices.push(new TouchInput(hudRoot, input));
-  for (const [id, fn] of [['b-console', () => konsole.open()], ['b-mode', toggleMode], ['b-view', toggleView],
-    ['b-preset', cyclePreset], ['b-tilt', cycleTilt], ['b-quality', cycleQuality], ['b-respawn', respawnHome]] as const) {
+  for (const [id, fn] of [['b-console', openConsole], ['b-mode', toggleMode], ['b-map', () => map.toggle()],
+    ['b-settings', openPanel], ['b-respawn', respawnHome]] as const) {
     document.getElementById(id)!.addEventListener('click', (e) => { e.stopPropagation(); fn(); });
   }
-  updateLabels();
 
   // Ladicí střela (do F5): paprsek po zaměřovači vykousne kouli r = 3
   const hit = newHit();
@@ -160,18 +224,23 @@ async function boot(): Promise<void> {
   };
   const debugShot = (): void => {
     const s = sim.ship;
+    audio.play('dw_shot', 0.6);
     raycast(world.isSolid, s.pos.x, s.pos.y, s.pos.z, s.aim.x, s.aim.y, s.aim.z, 400, hit);
-    if (hit.hit) carve(hit.x, hit.y, hit.z, 3);
+    if (!hit.hit) return;
+    carve(hit.x, hit.y, hit.z, 3);
+    // materiál zásahu zatím podle povrchu biomu (přesně podle nodu v F5)
+    const isl = nearestIsland(hit.x, hit.z, seed);
+    const d = Math.hypot(hit.x - s.pos.x, hit.y - s.pos.y, hit.z - s.pos.z);
+    audio.play(`dw_impact_${isl ? impactMaterial(isl.isl.biome.surface(0)) : 'stone'}`, Math.max(0.15, 1 - d / 250));
   };
 
-  const stats = document.getElementById('stats')!;
   const aimEl = document.getElementById('aim')!;
   const noseEl = document.getElementById('nose')!;
   const frame = emptyInput();
   let acc = 0;
   const rPos = vec3(), rAtt = quat(), camAtt = quat(), tmp = vec3();
   const wv = new Vector3();
-  let hudT = 0, statT = 0, frames = 0, worstMs = 0;
+  let statT = 0, frames = 0, worstMs = 0;
 
   engine.runRenderLoop(() => {
     const dt = Math.min(engine.getDeltaTime() / 1000, 0.25);
@@ -179,9 +248,9 @@ async function boot(): Promise<void> {
     let ticks = Math.floor(acc / TICK_DT);
     if (ticks > 5) { ticks = 5; acc = ticks * TICK_DT; }
     input.poll();
-    for (let t = 0; t < ticks; t++) {
+    for (let k = 0; k < ticks; k++) {
       snapPrev();
-      input.frameTicks(frame, t, ticks, TICK_DT);
+      input.frameTicks(frame, k, ticks, TICK_DT);
       sim.tick(frame, tilt());
       fireCd -= TICK_DT;
       if (frame.fire && fireCd <= 0 && !sim.dead) { fireCd = 0.25; debugShot(); }
@@ -190,11 +259,12 @@ async function boot(): Promise<void> {
     let respawned = false;
     for (const e of sim.events) {
       if (e.type === 'flash') hud.flash(e.text, e.color);
-      else if (e.type === 'explode') carve(e.x, e.y, e.z, e.r);
+      else if (e.type === 'explode') { carve(e.x, e.y, e.z, e.r); audio.play('dw_impact_crash', 1); }
+      else if (e.type === 'crash') audio.play('dw_impact_crash', Math.min(1, 0.4 + e.damage / 40));
       else if (e.type === 'respawned') respawned = true;
     }
     sim.events.length = 0;
-    if (respawned) { snapPrev(); chunks.dirty = true; updateLabels(); }
+    if (respawned) { snapPrev(); chunks.dirty = true; }
 
     // interpolace mezi dvěma posledními stavy simulace
     const alpha = acc / TICK_DT, s = sim.ship;
@@ -209,23 +279,32 @@ async function boot(): Promise<void> {
     fighter.rotationQuaternion!.set(rAtt.x, rAtt.y, rAtt.z, rAtt.w);
     fighter.isVisible = settings.view === 'chase' && !sim.dead;
 
+    qaxis(tmp, rAtt, 2);
+    mats.setHeadlight(settings.headlight && !sim.dead, rPos.x + tmp.x * 2, rPos.y + tmp.y * 2, rPos.z + tmp.z * 2, tmp.x, tmp.y, tmp.z);
+
     chunks.update(rPos.x, rPos.y, rPos.z);
+    const eye = rig.camera.globalPosition;
+    impostors.update(eye);
+    sky.update(dt, eye);
+    audio.update(dt, rPos.x, rPos.z, seed);
     scene.render();
 
     project(s.aim, aimEl);
-    qaxis(tmp, rAtt, 2);
     project(tmp, noseEl);
+    hud.update(sim, settings);
+    map.draw(s.pos.x, s.pos.z, headingAngle(s.att));
 
     frames++;
     worstMs = Math.max(worstMs, engine.getDeltaTime());
-    hudT += dt; statT += dt;
-    if (hudT >= 0.15) { hud.update(sim); hudT = 0; }
+    statT += dt;
     if (statT >= 0.5) {
-      stats.textContent =
-        `${(frames / statT).toFixed(0)} FPS · max ${worstMs.toFixed(0)} ms · ${instr.drawCallsCounter.current} DC\n`
-        + `${(chunks.stats.quads * 2 / 1000).toFixed(0)}k tri · ${chunks.stats.meshes} meshů · fronta ${chunks.stats.queued}+${chunks.stats.running}`
-        + ` · job ${chunks.stats.jobMs.toFixed(1)} ms · upload ${chunks.stats.uploadMs.toFixed(1)} ms\n`
-        + `${engine.getRenderWidth()}×${engine.getRenderHeight()}${gamepad.connected ? ' · gamepad' : ''}`;
+      if (settings.stats) {
+        statsEl.textContent =
+          `${(frames / statT).toFixed(0)} FPS · max ${worstMs.toFixed(0)} ms · ${instr.drawCallsCounter.current} DC\n`
+          + `${((chunks.stats.quads * 2 + impostors.triangles) / 1000).toFixed(0)}k tri · ${chunks.stats.meshes} meshů · ${impostors.count} impostorů`
+          + ` · fronta ${chunks.stats.queued}+${chunks.stats.running} · job ${chunks.stats.jobMs.toFixed(1)} ms\n`
+          + `${engine.getRenderWidth()}×${engine.getRenderHeight()} · ${settings.quality} · ${audio.format}${gamepad.connected ? ' · gamepad' : ''}`;
+      }
       statT = 0; frames = 0; worstMs = 0; chunks.stats.uploadMs = 0;
     }
   });
@@ -242,7 +321,7 @@ async function boot(): Promise<void> {
   }
 
   addEventListener('resize', () => engine.resize());
-  (window as unknown as { bw: unknown }).bw = { engine, scene, sim, chunks, settings, input, instr, world };
+  (window as unknown as { bw: unknown }).bw = { engine, scene, sim, chunks, impostors, settings, input, instr, world, audio, map, panel };
 }
 
 boot().catch((e) => {

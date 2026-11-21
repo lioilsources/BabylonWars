@@ -234,7 +234,9 @@ export class ChunkRenderer {
     m.setIndices(p.indices);
     // node (x,y,z) zabírá [x−0.5, x+0.5] jako v Luanti; voxel 0 objemu je lem (−s)
     m.position.set(n.cx * size - 0.5, n.cy * size - 0.5, n.cz * size - 0.5);
-    m.material = this.materials[pass];
+    // nejhrubší chunky sahají za dohled — dostanou variantu s ořezem koulí
+    // (předává hranici impostorům); bližší zůstávají bez discard
+    m.material = this.materials[pass + (n.lod === this.settings.maxLod && this.materials.length > 3 ? 3 : 0)];
     m.isPickable = false;
     m.doNotSyncBoundingInfo = true;
     m.computeWorldMatrix(true);
