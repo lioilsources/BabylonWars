@@ -3,6 +3,7 @@
 // sklon/náklon, vodováha, radar a flash hlášky (1.2 s).
 import type { Sim } from '../../sim/sim';
 import { bankAngle, headingAngle, pitchAngle } from '../../sim/flight';
+import { formatTime } from '../../sim/race';
 import { t, tFlash } from '../i18n';
 import { Level } from './level';
 import { Radar, type Blip } from './radar';
@@ -37,6 +38,10 @@ export class Hud {
   private boostRow: HTMLElement;
   private level: Level;
   readonly radar: Radar;
+  private raceTimer: HTMLElement;
+  private raceInfo: HTMLElement;
+  /** značka dalšího checkpointu (race_wp) */
+  readonly raceWp: HTMLElement;
   private last = new Map<HTMLElement, string>();
 
   constructor(root: HTMLElement, seed: number) {
@@ -62,6 +67,9 @@ export class Hud {
     this.boostRow = row(10, 'boost', this.boost);
     row(20, 'hull', this.hull);
     this.flashEl = el('flash');
+    this.raceTimer = el('race-timer');
+    this.raceInfo = el('race-info');
+    this.raceWp = el('race-wp', 'marker');
     this.level = new Level(root);
     this.radar = new Radar(root, seed);
   }
@@ -108,6 +116,14 @@ export class Hud {
     let att = pdeg > 3 ? `▲ ${pdeg}°` : pdeg < -3 ? `▼ ${-pdeg}°` : '';
     if (!sub && Math.abs(bdeg) > 5) att += `${att ? '    ' : ''}${t('hud.bank')} ${bdeg > 0 ? '+' : ''}${bdeg}°`;
     this.set(this.bank, att);
+
+    const race = sim.race;
+    this.raceTimer.style.display = this.raceInfo.style.display = race && !race.finished ? '' : 'none';
+    if (race && !race.finished) {
+      this.set(this.raceTimer, formatTime(race.time));
+      const r = race.rabbit.pos;
+      this.set(this.raceInfo, t('race.info', Math.floor(Math.hypot(r.x - s.pos.x, r.y - s.pos.y, r.z - s.pos.z)), race.cpHit, race.cpIndices.length));
+    }
 
     this.level.update(roll, pitch, opts.attitude && !sub && !sim.dead);
     this.radar.el.style.display = opts.radar ? '' : 'none';

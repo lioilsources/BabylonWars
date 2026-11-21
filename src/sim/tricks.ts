@@ -39,7 +39,12 @@ export type SimEvent =
   | { type: 'crash'; damage: number }
   | { type: 'explode'; x: number; y: number; z: number; r: number }
   | { type: 'died' }
-  | { type: 'respawned' };
+  | { type: 'respawned' }
+  | { type: 'shot'; x: number; y: number; z: number }
+  | { type: 'impact'; x: number; y: number; z: number; dx: number; dy: number; dz: number }
+  | { type: 'carve'; pts: number[]; r: number }
+  | { type: 'checkpoint' }
+  | { type: 'race_end'; ok: boolean; time: number; cp: number; cpTotal: number; score: number };
 
 /** tricks.update_input: hrany tlačítek → ťuk / dvojťuk / držení */
 export function updateInput(p: Pilot, buttons: number, now: number, out: TrickEvents): TrickEvents {

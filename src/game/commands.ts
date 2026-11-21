@@ -13,6 +13,11 @@ export interface CommandContext {
   toggle(key: 'music' | 'headlight' | 'radar', on?: boolean): boolean;
   toggleMap(): void;
   setLang(lang: 'cs' | 'en'): void;
+  /** /race: false = závod už běží */
+  startRace(): boolean;
+  stopRace(): boolean;
+  spawnMonster(species: string): boolean;
+  species: readonly string[];
 }
 
 const onOff = (a?: string): boolean | undefined => (a === 'on' ? true : a === 'off' ? false : undefined);
@@ -70,6 +75,19 @@ const COMMANDS: Record<string, { help: () => string; run: Handler }> = {
   lang: {
     help: () => t('cmd.lang'),
     run: (args, ctx) => { const l = args[0]?.toLowerCase(); if (l === 'cs' || l === 'en') ctx.setLang(l); else ctx.say(t('cmd.lang')); },
+  },
+  race: {
+    help: () => t('cmd.race'),
+    run: (args, ctx) => {
+      if (args[0]?.toLowerCase() === 'stop') { ctx.say(t(ctx.stopRace() ? 'race.cancelled' : 'race.none')); return; }
+      ctx.say(t(ctx.startRace() ? 'race.started' : 'race.running'));
+    },
+  },
+  monster: {
+    help: () => t('cmd.monster'),
+    run: (args, ctx) => {
+      if (!ctx.spawnMonster((args[0] ?? '').toLowerCase())) ctx.say(t('cmd.monsters', ctx.species.join(', ')));
+    },
   },
   help: {
     help: () => '/help',

@@ -4,27 +4,37 @@
 import { Engine } from '@babylonjs/core/Engines/engine';
 import { Scene } from '@babylonjs/core/scene';
 import { HemisphericLight } from '@babylonjs/core/Lights/hemisphericLight';
-import { Color4 } from '@babylonjs/core/Maths/math.color';
+import { Color3, Color4 } from '@babylonjs/core/Maths/math.color';
+import { StandardMaterial } from '@babylonjs/core/Materials/standardMaterial';
 import { Vector3 } from '@babylonjs/core/Maths/math.vector';
 import { SceneInstrumentation } from '@babylonjs/core/Instrumentation/sceneInstrumentation';
+import { SetMissingSideEffectWarningsEnabled } from '@babylonjs/core/Misc/devTools';
 
 import { parseSeed } from '../gen/lcg';
-import { frameSpawn, islandForCell, nearestIsland, spawnPosNear } from '../gen/islands';
+import { frameSpawn, islandForCell, spawnPosNear } from '../gen/islands';
 import { TICK_DT } from '../sim/constants';
+import { Creatures, SPECIES, SPECIES_NAMES, type Species } from '../sim/creatures';
 import { cameraAttitude, headingAngle, type ShipMode } from '../sim/flight';
+import { tangent, formatTime } from '../sim/race';
+import { WEAPON } from '../sim/weapons';
 import { emptyInput } from '../sim/input';
 import { qaxis, qcopy, qslerp, quat, vec3, type Quat, type Vec3 } from '../sim/math';
 import { Sim } from '../sim/sim';
 import type { WorldQuery } from '../sim/world-query';
 import { VoxelWorld } from '../voxel/world';
-import { raycast, newHit } from '../voxel/raycast';
+import { carveAlong, carveCapsule } from '../voxel/carve';
 import { newSweep, sweepSphere } from '../voxel/sweep';
-import { AIR } from '../voxel/registry';
-import { AudioSys, impactMaterial } from './audio';
+import { NODES } from '../voxel/registry';
+import { AudioSys, impactMaterial, type LoopSound } from './audio';
 import { CameraRig } from './camera-rig';
 import { ChunkRenderer } from './chunk-renderer';
 import { Console } from './commands';
+import { CreaturesView } from './entities/creatures-view';
 import { createFighter } from './entities/fighter';
+import { Debris } from './fx/debris';
+import { Effects } from './fx/effects';
+import { Particles } from './fx/particles';
+import type { Blip } from './hud/radar';
 import { Hud } from './hud/hud';
 import { WorldMap } from './hud/map';
 import { SettingsPanel } from './hud/settings-panel';
@@ -40,6 +50,8 @@ import { createVoxelMaterials } from './voxel.material';
 import './hud/hud.css';
 
 const BASE = import.meta.env.BASE_URL;
+// ve vývoji varuj, když chybí import side effectu (jinak jsou to tiché stuby)
+if (import.meta.env.DEV) SetMissingSideEffectWarningsEnabled(true);
 
 async function boot(): Promise<void> {
   const settings = loadSettings();
@@ -75,6 +87,7 @@ async function boot(): Promise<void> {
   const q0 = TUNING.quality[settings.quality];
   const chunks = new ChunkRenderer(scene, mats.passes, world, { r0: q0.r0, maxLod: q0.maxLod, uploadsPerFrame: q0.uploads });
   const impostors = new Impostors(scene, seed, FOG_COLOR);
+  let fogD = 0;
   const applyQuality = (ql: Quality): void => {
     const tq = TUNING.quality[ql];
     chunks.configure({ r0: tq.r0, maxLod: tq.maxLod, uploadsPerFrame: tq.uploads });
@@ -82,6 +95,7 @@ async function boot(): Promise<void> {
     const range = TUNING.impostorRange[ql];
     // mlha podle dohledu impostorů: na jeho konci ≈ 92 % barvy oblohy
     const fog = 1.6 / range;
+    fogD = fog;
     mats.setFog(fog);
     mats.setCut(chunks.viewDistance);
     impostors.configure(range, TUNING.impostorSegments[ql], TUNING.impostorRings, chunks.viewDistance, fog);
@@ -93,7 +107,21 @@ async function boot(): Promise<void> {
   const audio = new AudioSys(BASE, manifest.sounds ?? [], { music: settings.musicVolume, sfx: settings.sfxVolume });
   audio.musicOn = settings.music;
 
-  const fighter = await createFighter(scene, BASE);
+  const [fighter, creaturesView] = await Promise.all([createFighter(scene, BASE), CreaturesView.create(scene, BASE)]);
+  // zajíc: stíhačka obarvená do zlata (rabbit.lua ^[multiply:#ffd75e, glow 12)
+  const rabbit = fighter.clone('rabbit');
+  {
+    const m = (fighter.material as StandardMaterial).clone('rabbitMat');
+    m.diffuseColor = Color3.FromHexString('#ffd75e');
+    m.emissiveTexture = m.diffuseTexture;
+    m.emissiveColor = Color3.FromHexString('#ffd75e').scale(0.85);
+    rabbit.material = m;
+    rabbit.isVisible = false;
+  }
+  const particles = new Particles(scene);
+  const effects = new Effects(particles);
+  const debris = new Debris(scene, mats.avg, effects, world.isSolid);
+  const creatures = new Creatures(world.isSolid, seed);
 
   // Svět pro simulaci: editace → načtené bity → generátor
   const sw = newSweep();
@@ -103,7 +131,7 @@ async function boot(): Promise<void> {
     spawnNear: (x, z) => spawnPosNear(x, z, seed),
   };
   const home = islandForCell(0, 0, seed)!;
-  const sim = new Sim(query, frameSpawn(home), settings.mode, settings.control);
+  const sim = new Sim(query, frameSpawn(home), settings.mode, settings.control, seed);
 
   const prevPos: Vec3 = vec3(); const prevAtt: Quat = quat();
   const snapPrev = (): void => { const p = sim.ship.pos; prevPos.x = p.x; prevPos.y = p.y; prevPos.z = p.z; qcopy(prevAtt, sim.ship.att); };
@@ -171,6 +199,20 @@ async function boot(): Promise<void> {
     toggle: toggleSetting,
     toggleMap: () => map.toggle(),
     setLang: (l) => { settings.lang = l; onChange('lang'); },
+    startRace: () => {
+      if (sim.race && !sim.race.finished) return false;
+      sim.startRace();
+      settings.mode = sim.ship.mode; save();
+      return true;
+    },
+    stopRace: () => sim.stopRace(),
+    species: SPECIES_NAMES,
+    spawnMonster: (name) => {
+      if (!(name in SPECIES)) return false;
+      const s = sim.ship, f = vec3();
+      qaxis(f, s.att, 2);
+      return creatures.spawn(name as Species, s.pos.x + f.x * 30, s.pos.y + 5, s.pos.z + f.z * 30) !== null;
+    },
   });
 
   // Úvodní obrazovka: zmizí prvním gestem (zároveň odemkne zvuk)
@@ -212,26 +254,68 @@ async function boot(): Promise<void> {
     document.getElementById(id)!.addEventListener('click', (e) => { e.stopPropagation(); fn(); });
   }
 
-  // Ladicí střela (do F5): paprsek po zaměřovači vykousne kouli r = 3
-  const hit = newHit();
-  let fireCd = 0;
-  const carve = (cx: number, cy: number, cz: number, R: number): void => {
-    const batch: number[] = [];
-    for (let x = -R; x <= R; x++) for (let y = -R; y <= R; y++) for (let z = -R; z <= R; z++) {
-      if (x * x + y * y + z * z <= R * R + 1) batch.push(Math.round(cx) + x, Math.round(cy) + y, Math.round(cz) + z, AIR);
+  // Ničení terénu (weapons.lua): tunel ve směru střely, kráter při zničení
+  const removedMaterial = (removed: number[]): string => {
+    const count = new Map<string, number>();
+    let best = 'stone', bestN = 0;
+    for (let i = 3; i < removed.length; i += 4) {
+      const m = impactMaterial(NODES[removed[i]].name);
+      const n = (count.get(m) ?? 0) + 1;
+      count.set(m, n);
+      if (n > bestN) { best = m; bestN = n; }
     }
-    chunks.invalidate(world.setNodes(batch));
+    return best;
   };
-  const debugShot = (): void => {
-    const s = sim.ship;
-    audio.play('dw_shot', 0.6);
-    raycast(world.isSolid, s.pos.x, s.pos.y, s.pos.z, s.aim.x, s.aim.y, s.aim.z, 400, hit);
-    if (!hit.hit) return;
-    carve(hit.x, hit.y, hit.z, 3);
-    // materiál zásahu zatím podle povrchu biomu (přesně podle nodu v F5)
-    const isl = nearestIsland(hit.x, hit.z, seed);
-    const d = Math.hypot(hit.x - s.pos.x, hit.y - s.pos.y, hit.z - s.pos.z);
-    audio.play(`dw_impact_${isl ? impactMaterial(isl.isl.biome.surface(0)) : 'stone'}`, Math.max(0.15, 1 - d / 250));
+  const hearGain = (x: number, y: number, z: number, max: number): number => {
+    const p = rig.camera.globalPosition;
+    return Math.max(0, 1 - Math.hypot(x - p.x, y - p.y, z - p.z) / max);
+  };
+  const boreTunnel = (x: number, y: number, z: number, dx: number, dy: number, dz: number): void => {
+    const B = WEAPON.TUNNEL_BACKSET, L = WEAPON.TUNNEL_LENGTH, R = WEAPON.TUNNEL_RADIUS;
+    const res = carveCapsule(world, x - dx * B, y - dy * B, z - dz * B, x + dx * L, y + dy * L, z + dz * L, R);
+    if (res.batch.length) chunks.invalidate(world.setNodes(res.batch));
+    debris.spawn(res.removed, x, y, z, 3 + Math.floor(R * 2), { x: dx, y: dy, z: dz });
+    effects.fireBurst(x, y, z);
+    if (res.removed.length) audio.play(`dw_impact_${removedMaterial(res.removed)}`, hearGain(x, y, z, 250));
+  };
+  const explodeVoxels = (x: number, y: number, z: number, r: number): void => {
+    const res = carveCapsule(world, x, y, z, x, y, z, r);
+    if (res.batch.length) chunks.invalidate(world.setNodes(res.batch));
+    debris.spawn(res.removed, x, y, z, 3 + Math.floor(r * 2));
+    effects.fireBurst(x, y, z);
+  };
+
+  // Zvuky monster: smyčka u nejbližších tvorů v doslechu
+  const creatureLoops = new Map<number, LoopSound>();
+  const MAX_LOOPS = 6;
+  const updateCreatureSounds = (): void => {
+    const p = rig.camera.globalPosition;
+    const near = creatures.list
+      .map((c) => ({ c, d: Math.hypot(c.pos.x - p.x, c.pos.y - p.y, c.pos.z - p.z) }))
+      .filter((e) => e.d < e.c.def.hear)
+      .sort((a, b) => a.d - b.d).slice(0, MAX_LOOPS);
+    const keep = new Set(near.map((e) => e.c.id));
+    for (const [id, l] of creatureLoops) if (!keep.has(id)) { l.stop(); creatureLoops.delete(id); }
+    for (const { c } of near) {
+      let l = creatureLoops.get(c.id);
+      if (!l) {
+        const nl = audio.loop(`dw_creature_${c.species}`, 0.8, c.def.hear);
+        if (!nl) continue;
+        creatureLoops.set(c.id, l = nl);
+      }
+      l.setPos(c.pos.x, c.pos.y, c.pos.z);
+    }
+  };
+
+  const blips: Blip[] = [];
+  const collectBlips = (): Blip[] => {
+    blips.length = 0;
+    for (const c of creatures.list) {
+      if (c.species === 'whale') blips.push({ x: c.pos.x, z: c.pos.z, color: '#cfe8f8', size: 10 });
+      else blips.push({ x: c.pos.x, z: c.pos.z, color: '#ff6a50', size: 7 });
+    }
+    if (sim.race) blips.push({ x: sim.race.rabbit.pos.x, z: sim.race.rabbit.pos.z, color: '#ffd75e', size: 9 });
+    return blips;
   };
 
   const aimEl = document.getElementById('aim')!;
@@ -240,7 +324,7 @@ async function boot(): Promise<void> {
   let acc = 0;
   const rPos = vec3(), rAtt = quat(), camAtt = quat(), tmp = vec3();
   const wv = new Vector3();
-  let statT = 0, frames = 0, worstMs = 0;
+  let statT = 0, frames = 0, worstMs = 0, fxT = 0, ringT = 0;
 
   engine.runRenderLoop(() => {
     const dt = Math.min(engine.getDeltaTime() / 1000, 0.25);
@@ -252,14 +336,36 @@ async function boot(): Promise<void> {
       snapPrev();
       input.frameTicks(frame, k, ticks, TICK_DT);
       sim.tick(frame, tilt());
-      fireCd -= TICK_DT;
-      if (frame.fire && fireCd <= 0 && !sim.dead) { fireCd = 0.25; debugShot(); }
+      creatures.step(TICK_DT, sim.ship.pos);
+      for (const b of sim.weapons.bullets) if (b.alive) effects.tracer(b.x, b.y, b.z);
+      fxT += TICK_DT;
+      if (sim.race && fxT >= 0.1) {
+        const r = sim.race.rabbit.pos;
+        effects.trail(r.x, r.y, r.z);
+        ringT -= fxT;
+        if (ringT <= 0 && !sim.race.finished && sim.race.cpHit < sim.race.cpIndices.length) {
+          ringT = 2;
+          const idx = sim.race.cpIndices[sim.race.cpHit], cp = sim.race.route.points[idx];
+          const n = sim.race.route.points.length, seg = Math.min(idx, n - 2);
+          const tg = tangent(sim.race.route, seg, idx <= seg ? 0 : 1);
+          effects.ring(cp.x, cp.y, cp.z, tg.x, tg.y, tg.z);
+        }
+      }
+      if (fxT >= 0.1) fxT = 0;
     }
+    for (const f of creatures.fx) effects.creature(f.fx, f.x, f.y, f.z);
+    creatures.fx.length = 0;
     acc -= ticks * TICK_DT;
     let respawned = false;
     for (const e of sim.events) {
       if (e.type === 'flash') hud.flash(e.text, e.color);
-      else if (e.type === 'explode') { carve(e.x, e.y, e.z, e.r); audio.play('dw_impact_crash', 1); }
+      else if (e.type === 'explode') { explodeVoxels(e.x, e.y, e.z, e.r); audio.play('dw_impact_crash', 1); }
+      else if (e.type === 'shot') { audio.play('dw_shot', 0.5, 0.05); effects.muzzle(e.x, e.y, e.z); }
+      else if (e.type === 'impact') boreTunnel(e.x, e.y, e.z, e.dx, e.dy, e.dz);
+      else if (e.type === 'carve') { const res = carveAlong(world, e.pts, e.r); if (res.batch.length) chunks.invalidate(world.setNodes(res.batch)); }
+      else if (e.type === 'race_end') {
+        konsole.say(e.ok ? t('race.finished', formatTime(e.time), e.cp, e.cpTotal, e.score) : t('race.failed'));
+      }
       else if (e.type === 'crash') audio.play('dw_impact_crash', Math.min(1, 0.4 + e.damage / 40));
       else if (e.type === 'respawned') respawned = true;
     }
@@ -278,6 +384,14 @@ async function boot(): Promise<void> {
     fighter.position.set(rPos.x, rPos.y, rPos.z);
     fighter.rotationQuaternion!.set(rAtt.x, rAtt.y, rAtt.z, rAtt.w);
     fighter.isVisible = settings.view === 'chase' && !sim.dead;
+    const race = sim.race;
+    rabbit.isVisible = race !== null;
+    if (race) {
+      const r = race.rabbit;
+      rabbit.position.set(r.pos.x, r.pos.y, r.pos.z);
+      rabbit.rotationQuaternion!.set(r.att.x, r.att.y, r.att.z, r.att.w);
+    }
+    creaturesView.update(creatures.list);
 
     qaxis(tmp, rAtt, 2);
     mats.setHeadlight(settings.headlight && !sim.dead, rPos.x + tmp.x * 2, rPos.y + tmp.y * 2, rPos.z + tmp.z * 2, tmp.x, tmp.y, tmp.z);
@@ -286,13 +400,23 @@ async function boot(): Promise<void> {
     const eye = rig.camera.globalPosition;
     impostors.update(eye);
     sky.update(dt, eye);
+    debris.update(dt);
+    particles.update(dt, rig.camera, fogD);
+    {
+      const f = rig.camera.getDirection(Vector3.Forward()), u = rig.camera.upVector;
+      audio.setListener(eye.x, eye.y, eye.z, f.x, f.y, f.z, u.x, u.y, u.z);
+    }
+    updateCreatureSounds();
     audio.update(dt, rPos.x, rPos.z, seed);
     scene.render();
 
     project(s.aim, aimEl);
     project(tmp, noseEl);
-    hud.update(sim, settings);
-    map.draw(s.pos.x, s.pos.z, headingAngle(s.att));
+    const bl = collectBlips();
+    hud.update(sim, settings, bl);
+    map.draw(s.pos.x, s.pos.z, headingAngle(s.att), bl);
+    if (race && !race.finished) projectPoint(race.nextCheckpoint, hud.raceWp, true);
+    else hud.raceWp.style.display = 'none';
 
     frames++;
     worstMs = Math.max(worstMs, engine.getDeltaTime());
@@ -303,6 +427,7 @@ async function boot(): Promise<void> {
           `${(frames / statT).toFixed(0)} FPS · max ${worstMs.toFixed(0)} ms · ${instr.drawCallsCounter.current} DC\n`
           + `${((chunks.stats.quads * 2 + impostors.triangles) / 1000).toFixed(0)}k tri · ${chunks.stats.meshes} meshů · ${impostors.count} impostorů`
           + ` · fronta ${chunks.stats.queued}+${chunks.stats.running} · job ${chunks.stats.jobMs.toFixed(1)} ms\n`
+          + `${creatures.count} tvorů · ${particles.count} částic · ${debris.count} sutin · ${world.edits.size} editací\n`
           + `${engine.getRenderWidth()}×${engine.getRenderHeight()} · ${settings.quality} · ${audio.format}${gamepad.connected ? ' · gamepad' : ''}`;
       }
       statT = 0; frames = 0; worstMs = 0; chunks.stats.uploadMs = 0;
@@ -320,8 +445,24 @@ async function boot(): Promise<void> {
     elm.style.transform = `translate(${((p.x + 1) / 2) * canvas.clientWidth}px, ${((1 - p.y) / 2) * canvas.clientHeight}px)`;
   }
 
+  function projectPoint(pt: Vec3, elm: HTMLElement, withDist: boolean): void {
+    const cam = rig.camera, cp = cam.globalPosition;
+    const fwd = cam.getDirection(Vector3.Forward(scene.useRightHandedSystem));
+    if ((pt.x - cp.x) * fwd.x + (pt.y - cp.y) * fwd.y + (pt.z - cp.z) * fwd.z <= 0) { elm.style.display = 'none'; return; }
+    wv.set(pt.x, pt.y, pt.z);
+    const p = Vector3.TransformCoordinates(wv, scene.getTransformMatrix());
+    elm.style.display = '';
+    elm.style.transform = `translate(${((p.x + 1) / 2) * canvas.clientWidth}px, ${((1 - p.y) / 2) * canvas.clientHeight}px)`;
+    if (withDist) {
+      const d = `${Math.round(Math.hypot(pt.x - rPos.x, pt.y - rPos.y, pt.z - rPos.z))} m`;
+      let sp = elm.firstElementChild as HTMLElement | null;
+      if (!sp) { sp = document.createElement('span'); elm.append(sp); }
+      if (sp.textContent !== d) sp.textContent = d;
+    }
+  }
+
   addEventListener('resize', () => engine.resize());
-  (window as unknown as { bw: unknown }).bw = { engine, scene, sim, chunks, impostors, settings, input, instr, world, audio, map, panel };
+  (window as unknown as { bw: unknown }).bw = { engine, scene, sim, chunks, impostors, settings, input, instr, world, audio, map, panel, creatures, particles, debris };
 }
 
 boot().catch((e) => {

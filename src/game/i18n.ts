@@ -31,6 +31,12 @@ const en = {
   'cmd.seedHelp': '/seed — world seed (another world: ?seed=… in the address)',
   'cmd.music': '/music [on|off] — island music', 'cmd.headlight': '/headlight [on|off] — the fighter’s headlight',
   'cmd.radar': '/radar — toggle the island radar', 'cmd.map': '/map — fullscreen world map', 'cmd.lang': '/lang cs|en',
+  'cmd.race': '/race [stop] — greyhound race: chase the golden hare!',
+  'race.started': 'Race started — follow the hare!', 'race.cancelled': 'Race cancelled.', 'race.none': 'No race is running.',
+  'race.running': 'A race is already running — end it with /race stop.',
+  'race.finished': 'Race finished in @1! Checkpoints @2/@3, score @4.', 'race.failed': 'Race failed — fighter destroyed.',
+  'race.info': 'HARE @1 m  ·  CP @2/@3',
+  'cmd.monster': '/monster <species> — spawn a monster nearby', 'cmd.monsters': 'Species: @1',
 };
 
 type Key = keyof typeof en;
@@ -64,6 +70,12 @@ const cs: Record<Key, string> = {
   'cmd.seedHelp': '/seed — seed světa (jiný svět: ?seed=… v adrese)',
   'cmd.music': '/music [on|off] — hudba ostrovů', 'cmd.headlight': '/headlight [on|off] — světlomet stíhačky',
   'cmd.radar': '/radar — zapne/vypne radar ostrovů', 'cmd.map': '/map — celoobrazovková mapa', 'cmd.lang': '/lang cs|en',
+  'cmd.race': '/race [stop] — chrtí závod: leť za zlatým zajícem!',
+  'race.started': 'Závod začal — následuj zajíce!', 'race.cancelled': 'Závod zrušen.', 'race.none': 'Žádný závod neběží.',
+  'race.running': 'Závod už běží — ukonči ho přes /race stop.',
+  'race.finished': 'Závod dokončen za @1! Checkpointy @2/@3, skóre @4.', 'race.failed': 'Závod nedokončen — stíhačka zničena.',
+  'race.info': 'ZAJÍC @1 m  ·  CP @2/@3',
+  'cmd.monster': '/monster <druh> — spawne monstrum poblíž', 'cmd.monsters': 'Druhy: @1',
 };
 
 const DICT: Record<Lang, Record<Key, string>> = { en, cs };
@@ -92,9 +104,21 @@ export function t(key: Key, ...args: (string | number)[]): string {
 const FLASH_CS: Record<string, string> = {
   'BARREL ROLL!': 'VÝKRUT!', 'LOOPING!': 'LOOPING!', 'IMMELMANN!': 'IMMELMANN!',
   'BOOST!': 'BOOST!', 'DESTROYED! Respawn…': 'Stíhačka zničena! Respawn…',
+  // race.lua / rabbit.lua (dw_core.cs.tr)
+  'SLALOM! Stay on the hare': 'SLALOM! Drž se zajíce',
+  'HARE: BARREL ROLL! (double-tap A/D)': 'ZAJÍC: BARREL ROLL! (dvojité A/D)',
+  'HARD TURN! S+A/D = airbrake drift': 'OSTRÁ ZATÁČKA! S+A/D = airbrake drift',
+  'TUNNEL! Slow down (S) and fly clean': 'TUNEL! Zpomal (S) a leť přesně',
+  'CLIMB + DIVE! Shift down for extra speed': 'STOUPÁNÍ + STŘEMHLAV! Shift dolů = rychlost navíc',
+  'RACE! Follow the golden hare!': 'ZÁVOD! Následuj zlatého zajíce!',
+  'HARE WAITING — catch up!': 'ZAJÍC ČEKÁ — dohoň ho!',
+  'HARE AT THE FINISH — fly to it!': 'ZAJÍC V CÍLI — doleť k němu!',
+  'RACE FAILED': 'ZÁVOD NEDOKONČEN',
 };
+const FLASH_CS_RE: [RegExp, string][] = [[/^FINISH — (.*)\s+\|\s+SCORE (\d+)$/, 'CÍL — $1  |  SKÓRE $2']];
 export function tFlash(text: string): string {
   if (lang !== 'cs') return text;
+  for (const [re, rep] of FLASH_CS_RE) if (re.test(text)) return text.replace(re, rep);
   const m = /^(.*?)(\s*[×x]\d+)?$/.exec(text);
   const head = m?.[1] ?? text;
   return (FLASH_CS[head] ?? head) + (m?.[2] ?? '');
