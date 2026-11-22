@@ -31,6 +31,7 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: #2e3155; tou
 .pips.drill i.on { background: #ff9a3c; }
 .pips.drill.active { opacity: 1; }
 .pips.drill.active i.on { box-shadow: 0 0 4px #ff9a3c88; }
+#update { position: absolute; left: 50%; top: 14vh; transform: translateX(-50%); z-index: 20; padding: 10px 16px; font: inherit; font-size: 15px; color: #161936; background: #ffd75e; border: 0; border-radius: 8px; box-shadow: 0 2px 10px #0008; pointer-events: auto; }
 #mode { position: absolute; left: max(2vw, env(safe-area-inset-left)); top: calc(max(5vh, env(safe-area-inset-top)) + 26px); color: #e8ecff; font-size: 13px; font-weight: bold; letter-spacing: 0.04em; white-space: pre; line-height: 1.35; text-shadow: var(--shadow); }
 /* knipl: kruh = plná výchylka, tečka = poloha virtuální páky (od středu → rychlost otáčení) */
 #stick-ring { position: absolute; left: 50%; top: 50%; width: 220px; height: 220px; transform: translate(-50%, -50%); border: 1px dashed #ffffff40; border-radius: 50%; pointer-events: none; }
