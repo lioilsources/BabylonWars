@@ -22,7 +22,8 @@ self.addEventListener('fetch', (e) => {
   const url = new URL(req.url);
   if (url.origin !== self.location.origin) return;          // chatbridge apod. jde mimo cache
   if (req.mode === 'navigate') {
-    e.respondWith(fetch(req).then((res) => {
+    // no-cache: obejdi HTTP cache prohlížeče (Pages posílá max-age=600)
+    e.respondWith(fetch(req.url, { cache: 'no-cache' }).then((res) => {
       const copy = res.clone();
       caches.open(SHELL).then((c) => c.put('./', copy));
       return res;

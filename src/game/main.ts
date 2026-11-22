@@ -55,7 +55,16 @@ const BASE = import.meta.env.BASE_URL;
 // ve vývoji varuj, když chybí import side effectu (jinak jsou to tiché stuby)
 if (import.meta.env.DEV) SetMissingSideEffectWarningsEnabled(true);
 
-registerServiceWorker(BASE);
+// nová verze: na úvodní obrazovce rovnou načti, ve hře jen nabídni (nepřerušuj let)
+registerServiceWorker(BASE, () => {
+  const start = document.getElementById('start');
+  if (!start || !start.classList.contains('hidden')) { location.reload(); return; }
+  const b = document.createElement('button');
+  b.id = 'update';
+  b.textContent = t('update.ready');
+  b.addEventListener('click', () => location.reload());
+  document.getElementById('hud')?.append(b);
+});
 
 async function boot(): Promise<void> {
   const settings = loadSettings();
