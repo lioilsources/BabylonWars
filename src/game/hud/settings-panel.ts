@@ -1,21 +1,22 @@
 // Panel nastavení (Esc / ⚙). Každá změna se hned uloží a ohlásí přes
 // onChange(klíč) — main.ts ji aplikuje (kvalita, hlasitost, režim…).
 import { t, type I18nKey } from '../i18n';
-import type { Settings } from '../settings';
+import { TUNING, type Settings } from '../settings';
 
 type Opt = { key: keyof Settings; label: I18nKey } & (
   | { kind: 'select'; options: { v: string | number; label: I18nKey | string }[] }
-  | { kind: 'range'; min: number; max: number; step: number }
+  | { kind: 'range'; min: number; max: number; step: number; fmt?: (v: number) => string }
   | { kind: 'check' }
 );
 
 const ROWS: Opt[] = [
   { key: 'lang', label: 'set.lang', kind: 'select', options: [{ v: 'cs', label: 'Čeština' }, { v: 'en', label: 'English' }] },
-  { key: 'mode', label: 'set.mode', kind: 'select', options: [{ v: 'sub', label: 'opt.sub' }, { v: 'fighter', label: 'opt.fighter' }] },
-  { key: 'control', label: 'set.control', kind: 'select', options: [{ v: 'free', label: 'opt.free' }, { v: 'direct', label: 'opt.direct' }, { v: 'classic', label: 'opt.classic' }] },
+  { key: 'mode', label: 'set.mode', kind: 'select', options: [{ v: 'sub', label: 'opt.sub' }, { v: 'fighter', label: 'opt.fighter' }, { v: 'space', label: 'opt.space' }] },
+  { key: 'control', label: 'set.control', kind: 'select', options: [{ v: 'free', label: 'opt.free' }, { v: 'direct', label: 'opt.direct' }, { v: 'stick', label: 'opt.stick' }, { v: 'classic', label: 'opt.classic' }] },
   { key: 'horizonTilt', label: 'set.horizonTilt', kind: 'range', min: 0, max: 1, step: 0.05 },
   { key: 'subTilt', label: 'set.subTilt', kind: 'range', min: 0, max: 1, step: 0.05 },
   { key: 'view', label: 'set.view', kind: 'select', options: [{ v: 'chase', label: 'opt.chase' }, { v: 'nose', label: 'opt.nose' }] },
+  { key: 'zoom', label: 'set.zoom', kind: 'range', min: -TUNING.zoomRange, max: TUNING.zoomRange, step: 0.05, fmt: (v) => `${(2 ** v).toFixed(2)}×` },
   { key: 'quality', label: 'set.quality', kind: 'select', options: [{ v: 'low', label: 'opt.low' }, { v: 'medium', label: 'opt.medium' }, { v: 'high', label: 'opt.high' }] },
   { key: 'mouseSens', label: 'set.mouseSens', kind: 'range', min: 0.0006, max: 0.006, step: 0.0002 },
   { key: 'invertY', label: 'set.invertY', kind: 'check' },
@@ -95,8 +96,17 @@ export class SettingsPanel {
         inp.type = 'range';
         inp.min = String(r.min); inp.max = String(r.max); inp.step = String(r.step);
         inp.value = String(rec[r.key]);
-        inp.addEventListener('input', () => { rec[r.key] = Number(inp.value); this.onChange(r.key); });
+        const fmt = r.fmt;
+        const val = document.createElement('output');
+        if (fmt) val.textContent = fmt(Number(inp.value));
+        inp.addEventListener('input', () => {
+          rec[r.key] = Number(inp.value); this.onChange(r.key);
+          if (fmt) val.textContent = fmt(Number(inp.value));
+        });
+        // dvojklik vrátí na výchozí 1×
+        if (fmt) inp.addEventListener('dblclick', () => { inp.value = '0'; inp.dispatchEvent(new Event('input')); });
         row.append(inp);
+        if (fmt) row.append(val);
       } else {
         const inp = document.createElement('input');
         inp.type = 'checkbox';

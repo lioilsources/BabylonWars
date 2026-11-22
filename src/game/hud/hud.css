@@ -27,6 +27,17 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: #2e3155; tou
 .pips.hull i.on { background: #ff5040; box-shadow: 0 0 3px #ff504088; }
 .pips.boost i.on { background: #ffd75e; }
 .pips.boost.active i.on { background: #fff3b0; box-shadow: 0 0 5px #ffd75e; }
+.pips.drill { opacity: 0.45; }
+.pips.drill i.on { background: #ff9a3c; }
+.pips.drill.active { opacity: 1; }
+.pips.drill.active i.on { box-shadow: 0 0 4px #ff9a3c88; }
+#mode { position: absolute; left: max(2vw, env(safe-area-inset-left)); top: calc(max(5vh, env(safe-area-inset-top)) + 26px); color: #e8ecff; font-size: 13px; font-weight: bold; letter-spacing: 0.04em; white-space: pre; line-height: 1.35; text-shadow: var(--shadow); }
+/* knipl: kruh = plná výchylka, tečka = poloha virtuální páky (od středu → rychlost otáčení) */
+#stick-ring { position: absolute; left: 50%; top: 50%; width: 220px; height: 220px; transform: translate(-50%, -50%); border: 1px dashed #ffffff40; border-radius: 50%; pointer-events: none; }
+#stick-ring::after { content: ''; position: absolute; left: 50%; top: 50%; width: 18px; height: 18px; transform: translate(-50%, -50%); border: 1px solid #ffffff55; border-radius: 50%; }
+#stick { left: 0; top: 0; }
+#stick::before { content: ''; position: absolute; left: -5px; top: -5px; width: 10px; height: 10px; background: #9fd8ff; border-radius: 50%; box-shadow: 0 0 3px #000a; }
+#settings .row output { grid-column: 2; font-size: 12px; opacity: 0.75; text-align: right; margin-top: -6px; }
 #flash { position: absolute; top: 35%; left: 50%; transform: translate(-50%, -50%) scale(.9); font-size: 34px; font-weight: bold;
   text-shadow: 0 2px 4px #000c; opacity: 0; transition: opacity .15s, transform .15s; white-space: nowrap; }
 #flash.on { opacity: 1; transform: translate(-50%, -50%) scale(1); }

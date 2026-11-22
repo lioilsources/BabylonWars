@@ -10,26 +10,36 @@ s letadlem** (to Luanti neumí). Luanti verze dál žije ve svém repu.
 |---|---|---|---|
 | Míření | myš (klikni do hry) | pravá páčka | tah pravým palcem |
 | Plyn | W / S | levá páčka ↑↓ | levý joystick ↑↓ |
-| Náklon (ponorka: úkrok) | A / D | levá páčka ↔ | levý joystick ↔ |
+| Náklon (ponorka, 6DoF: úkrok) | A / D | levá páčka ↔ | levý joystick ↔ |
 | Nahoru / dolů | Space / Shift | RB / LT | ▲ / ▼ |
-| Výkrut (`direct`, ponorka) | Q / E | d-pad ← → | — |
+| Výkrut (`direct`, `stick`, 6DoF, ponorka) | Q / E | d-pad ← → | — |
 | Boost | F / pravé tlačítko / 2× W | A / LB | BOOST |
 | Střelba | levé tlačítko | RT | FIRE |
+| Zbraň (kanón / vrták) | kolečko / 1 / 2 | d-pad ↑ | Zbraň |
 | Mapa | Z | Back / View | Mapa |
 | Nastavení | Esc | Start / Menu | ⚙ |
 
-Přepínače: **M** ponorka / stíhačka (výchozí ponorka jako v Luanti), **C** řízení
-(`free` → `direct` → `classic`), **T** náklon horizontu, **V** pohled, **O** kvalita,
+Přepínače: **M** ponorka → stíhačka → stíhačka 6DoF (výchozí ponorka jako v Luanti;
+režim a zbraň ukazuje štítek vlevo nahoře), **C** řízení
+(`free` → `direct` → `stick` → `classic`), **T** náklon horizontu, **V** pohled, **O** kvalita,
 **L** světlomet, **R** domů, **/** příkazy. Všechno je i v panelu nastavení (Esc, ⚙),
-včetně jazyka (cs/en), hlasitosti, radaru a vodováhy. Seed světa: `?seed=12345`.
+včetně jazyka (cs/en), zoomu (0,25× – 4×), hlasitosti, radaru a vodováhy. Seed světa: `?seed=12345`.
 
 - `free` — myš táhne zaměřovač v prostoru, letadlo ho honí; looping uletíš tahem nahoru.
 - `direct` — myš/páčka = úhlové rychlosti, Q/E výkrut, žádné samosrovnávání.
+- `stick` — myš jako joystick: výchylka od středu (tečka v kruhu) = rychlost otáčení,
+  takže looping drží bez dalšího pohybu myší; zpět do středu = rovný let.
 - `classic` — model z `vehicle.lua` 1:1: strop sklonu, auto-náklon, drift (S + A/D),
   skriptované triky: 2× A/D výkrut, držet Space looping, 2× S Immelmann.
 - Ve `free`/`direct` se ručně uletěný výkrut a looping bodují stejně (detekce z letu).
 
-Střely provrtávají do ostrovů tunely (Ø 8, stíhačka jimi proletí); tři rány ≈ 45 bloků.
+Stíhačka 6DoF (`/mode space`): W/S vpřed/vzad, A/D úkrok, Space/Shift nahoru/dolů,
+myš sklon a kurz (v `stick` jako knipl), Q/E výkrut. Bez samosrovnávání a gravitace,
+asistence letu po puštění kláves zastaví.
+
+Zbraně: **kanón** dělá malé krátery bez omezení, **vrták** prorazí tunel Ø 10, kterým
+loď proletí, ale jako nitro: plná nádrž vydrží 2,2 s palby a nabije se za 9 s
+(oranžový pruh).
 
 ## Stav: F0 (spike, brána výkonu)
 

@@ -1,6 +1,6 @@
 // Klávesnice + myš (Pointer Lock).
 // W/S plyn · A/D náklon (ponorka úkrok) · Space/Shift nahoru/dolů · Q/E výkrut
-// levé tlačítko střelba · pravé tlačítko / F boost (dvojťuk W taky)
+// levé tlačítko střelba · pravé tlačítko / F boost (dvojťuk W taky) · kolečko / 1 / 2 zbraň
 import { BTN, type InputFrame } from '../../sim/input';
 import type { Settings } from '../settings';
 import type { InputDevice, InputManager } from './input-manager';
@@ -30,6 +30,14 @@ export class KeyboardMouse implements InputDevice {
     });
     window.addEventListener('mousedown', (e) => { if (document.pointerLockElement === canvas) this.buttons |= 1 << e.button; });
     window.addEventListener('mouseup', (e) => { this.buttons &= ~(1 << e.button); });
+    // kolečko přepíná zbraň; touchpad posílá dávku událostí → jedno přepnutí za 250 ms
+    let wheelT = 0;
+    canvas.addEventListener('wheel', (e) => {
+      e.preventDefault();
+      if (document.pointerLockElement !== canvas || e.timeStamp - wheelT < 250 || Math.abs(e.deltaY) < 1) return;
+      wheelT = e.timeStamp;
+      this.onKey('Wheel');
+    }, { passive: false });
   }
 
   fill(f: InputFrame): void {

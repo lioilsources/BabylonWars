@@ -3,7 +3,7 @@
 // ani Babylon — jde testovat headless a později pustit na serveru.
 
 import { C, TICK_DT } from './constants';
-import { createShip, steerFighter, stepSub, type ControlPreset, type ShipMode, type ShipState } from './flight';
+import { createShip, steerFighter, stepSpace, stepSub, syncEuler, type ControlPreset, type ShipMode, type ShipState } from './flight';
 import type { InputFrame } from './input';
 import { v3copy, vec3, type Vec3 } from './math';
 import { award, checkTriggers, createPilot, detectTricks, stepTrick, updateInput, updatePassive, type Pilot, type SimEvent, type TrickEvents } from './tricks';
@@ -46,20 +46,24 @@ export class Sim {
     this.time += dt;
     const s = this.ship, now = this.time, ev = this.events;
     this.weapons.step(dt, this.world.isSolid, ev);
+    this.weapons.trigger(inp.fire && !this.dead, s, dt, ev);
     if (this.race && !this.race.step(dt, s.pos, this.pilot, ev)) this.race = null;
     if (this.dead) {
       this.respawnTimer -= dt;
       if (this.respawnTimer <= 0) this.respawn();
       return;
     }
-    if (inp.fire) this.weapons.fire(s, ev);
     const e = updateInput(this.pilot, inp.buttons, now, this.te);
     s.iframes = Math.max(0, s.iframes - dt);
     s.crashCooldown = Math.max(0, s.crashCooldown - dt);
 
     if (s.trick) stepTrick(this.pilot, s, dt, now, ev);
     else if (s.mode === 'sub') stepSub(s, inp, dt);
-    else {
+    else if (s.mode === 'space') {
+      const out = stepSpace(s, inp, dt);
+      detectTricks(this.pilot, s, out.pitchRate, out.rollRate, dt, now, ev);
+      checkTriggers(this.pilot, s, e, ev);
+    } else {
       const out = steerFighter(s, inp, dt, horizonTilt);
       if (out.drifting) this.pilot.score += 50 * dt;
       if (s.control !== 'classic') detectTricks(this.pilot, s, out.pitchRate, out.rollRate, dt, now, ev);
@@ -138,24 +142,19 @@ export class Sim {
     const s = this.ship;
     s.mode = mode;
     s.trick = null;
+    s.stickX = 0; s.stickY = 0;
+    syncEuler(s);
     if (mode === 'sub') { s.vel.x = 0; s.vel.y = 0; s.vel.z = 0; s.speed = 0; }
-    else s.speed = Math.max(s.speed, 15);
+    else if (mode === 'fighter') s.speed = Math.max(s.speed, 15);
     s.lookH = s.heading; s.lookV = s.pitch;
   }
 
   setControl(c: ControlPreset): void {
     const s = this.ship;
     s.control = c;
-    s.lookH = Math.atan2(s.aim.x, s.aim.z);
-    s.lookV = Math.asin(Math.max(-1, Math.min(1, s.aim.y)));
+    s.stickX = 0; s.stickY = 0;
     // Euler stav z aktuální orientace (přechod free → classic bez skoku)
-    const f = { x: 0, y: 0, z: 0 };
-    f.x = 2 * (s.att.x * s.att.z + s.att.w * s.att.y);
-    f.y = 2 * (s.att.y * s.att.z - s.att.w * s.att.x);
-    f.z = 1 - 2 * (s.att.x * s.att.x + s.att.y * s.att.y);
-    s.heading = Math.atan2(f.x, f.z);
-    s.pitch = Math.asin(Math.max(-1, Math.min(1, f.y)));
-    s.roll = 0;
+    syncEuler(s);
   }
 
   /** /race: trať od lodi ve směru letu; v ponorce přepne na stíhačku */

@@ -13,15 +13,16 @@ export interface InputFrame {
   strafe: number;                   // −1…1 (A/D, levá páčka ↔): fighter náklon, ponorka úkrok
   vertical: number;                 // −1…1 (Space/Shift)
   roll: number;                     // −1…1 (Q/E): výkrut v `direct` / ponorce
+  padX: number; padY: number;       // −1…1 absolutní výchylka (gamepad v řízení `stick`)
   fire: boolean; boost: boolean;
   buttons: number;                  // BTN.* bitově
 }
 
 export const emptyInput = (): InputFrame => ({
-  aimDX: 0, aimDY: 0, thrust: 0, strafe: 0, vertical: 0, roll: 0, fire: false, boost: false, buttons: 0,
+  aimDX: 0, aimDY: 0, thrust: 0, strafe: 0, vertical: 0, roll: 0, padX: 0, padY: 0, fire: false, boost: false, buttons: 0,
 });
 
 export function clearInput(f: InputFrame): void {
-  f.aimDX = 0; f.aimDY = 0; f.thrust = 0; f.strafe = 0; f.vertical = 0; f.roll = 0;
+  f.aimDX = 0; f.aimDY = 0; f.thrust = 0; f.strafe = 0; f.vertical = 0; f.roll = 0; f.padX = 0; f.padY = 0;
   f.fire = false; f.boost = false; f.buttons = 0;
 }
