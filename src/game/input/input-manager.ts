@@ -26,6 +26,7 @@ export class InputManager {
     for (const d of this.devices) d.fill(frame, dt);
     frame.thrust = clamp1(frame.thrust); frame.roll = clamp1(frame.roll);
     frame.vertical = clamp1(frame.vertical); frame.strafe = clamp1(frame.strafe);
+    frame.padX = clamp1(frame.padX); frame.padY = clamp1(frame.padY);
   }
 
   poll(): void { for (const d of this.devices) d.poll?.(); }

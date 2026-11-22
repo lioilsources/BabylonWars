@@ -1,10 +1,11 @@
 // Letový HUD podle hud.lua: kompasová páska (±60° po 15°), kurz, panel
 // SPD/ALT/VS, statbary trupu (20 dílků) a boostu (10), skóre s kombem,
-// sklon/náklon, vodováha, radar a flash hlášky (1.2 s).
+// sklon/náklon, vodováha, radar a flash hlášky (1.2 s). Navíc: štítek režimu
+// a zbraně, nádrž vrtáku a kurzor kniplu v řízení „myš jako joystick“.
 import type { Sim } from '../../sim/sim';
 import { bankAngle, headingAngle, pitchAngle } from '../../sim/flight';
 import { formatTime } from '../../sim/race';
-import { t, tFlash } from '../i18n';
+import { t, tFlash, type I18nKey } from '../i18n';
 import { Level } from './level';
 import { Radar, type Blip } from './radar';
 
@@ -36,6 +37,11 @@ export class Hud {
   private hull: HTMLElement[] = [];
   private boost: HTMLElement[] = [];
   private boostRow: HTMLElement;
+  private drill: HTMLElement[] = [];
+  private drillRow: HTMLElement;
+  private mode: HTMLElement;
+  private stickRing: HTMLElement;
+  private stickDot: HTMLElement;
   private level: Level;
   readonly radar: Radar;
   private raceTimer: HTMLElement;
@@ -64,8 +70,12 @@ export class Hud {
       bars.append(r);
       return r;
     };
+    this.drillRow = row(10, 'drill', this.drill);
     this.boostRow = row(10, 'boost', this.boost);
     row(20, 'hull', this.hull);
+    this.mode = el('mode');
+    this.stickRing = el('stick-ring');
+    this.stickDot = el('stick', 'marker');
     this.flashEl = el('flash');
     this.raceTimer = el('race-timer');
     this.raceInfo = el('race-info');
@@ -89,8 +99,19 @@ export class Hud {
   }
 
   /** Každý frame: radar; text se přepisuje jen při změně */
-  update(sim: Sim, opts: { radar: boolean; attitude: boolean }, blips: Blip[] = []): void {
+  update(sim: Sim, opts: { radar: boolean; attitude: boolean; control: string }, blips: Blip[] = []): void {
     const s = sim.ship, sub = s.mode === 'sub';
+    const w = sim.weapons;
+    this.set(this.mode, `${t(`mode.${s.mode}` as I18nKey)}   ·   ${t(`weapon.${w.weapon}` as I18nKey)}\n${t('hud.modeKey')}`);
+    const dm = Math.round(w.drill * 10);
+    for (let i = 0; i < 10; i++) this.drill[i].classList.toggle('on', i < dm);
+    this.drillRow.classList.toggle('active', w.weapon === 'drill');
+    const stick = opts.control === 'stick' && !sub && !sim.dead;
+    this.stickRing.style.display = this.stickDot.style.display = stick ? '' : 'none';
+    if (stick) {
+      const R = this.stickRing.clientWidth / 2;
+      this.stickDot.style.transform = `translate(calc(50vw + ${(s.stickX * R).toFixed(1)}px), calc(50vh + ${(-s.stickY * R).toFixed(1)}px))`;
+    }
     const H = headingAngle(s.att);
     const hdg = ((Math.round(H * 180 / Math.PI) % 360) + 360) % 360;
     this.set(this.compass, compassTape(hdg));

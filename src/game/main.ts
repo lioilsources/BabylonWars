@@ -81,6 +81,7 @@ async function boot(): Promise<void> {
 
   const rig = new CameraRig(scene);
   rig.setView(settings.view);
+  rig.setZoom(2 ** settings.zoom);
   const sky = new Sky(scene);
 
   const [mats, manifest] = await Promise.all([
@@ -154,7 +155,8 @@ async function boot(): Promise<void> {
   const hud = new Hud(hudRoot, seed);
   const map = new WorldMap(hudRoot, seed);
   const input = new InputManager();
-  const tilt = (): number => (sim.ship.mode === 'sub' ? settings.subTilt : settings.horizonTilt);
+  // 6DoF nemá „nahoru“: kamera vždy s plným náklonem lodi
+  const tilt = (): number => (sim.ship.mode === 'sub' ? settings.subTilt : sim.ship.mode === 'space' ? 1 : settings.horizonTilt);
 
   const statsEl = document.getElementById('stats')!;
   const save = (): void => saveSettings(settings);
@@ -163,11 +165,16 @@ async function boot(): Promise<void> {
     if (m !== sim.ship.mode) sim.setMode(m);
     save();
     if (announce) {
-      hud.flash(t(m === 'sub' ? 'mode.sub' : 'mode.fighter'), '#ffffff');
-      konsole.say(t(m === 'sub' ? 'mode.subHelp' : 'mode.fighterHelp'));
+      hud.flash(t(`mode.${m}`), '#ffffff');
+      konsole.say(t(`mode.${m}Help`));
     }
   };
-  const toggleMode = (): void => setMode(sim.ship.mode === 'sub' ? 'fighter' : 'sub');
+  const MODES: ShipMode[] = ['sub', 'fighter', 'space'];
+  const toggleMode = (): void => setMode(MODES[(MODES.indexOf(sim.ship.mode) + 1) % MODES.length]);
+  const cycleWeapon = (): void => {
+    const w = sim.weapons.cycle();
+    hud.flash(t(`weapon.${w}`), w === 'drill' ? '#ff9a3c' : '#ffffff');
+  };
   const toggleView = (): void => { settings.view = settings.view === 'nose' ? 'chase' : 'nose'; rig.setView(settings.view); save(); };
   const respawnHome = (): void => { sim.respawn(frameSpawn(home)); snapPrev(); chunks.dirty = true; };
   const teleport = (x: number, y: number, z: number, yaw?: number): void => {
@@ -181,6 +188,7 @@ async function boot(): Promise<void> {
       case 'mode': setMode(settings.mode, false); break;
       case 'control': sim.setControl(settings.control); break;
       case 'view': rig.setView(settings.view); break;
+      case 'zoom': rig.setZoom(2 ** settings.zoom); break;
       case 'quality': applyQuality(settings.quality); break;
       case 'music': audio.setMusic(settings.music); break;
       case 'musicVolume': case 'sfxVolume': audio.setVolumes(settings.musicVolume, settings.sfxVolume); break;
@@ -257,20 +265,22 @@ async function boot(): Promise<void> {
     if (code === 'KeyV') toggleView();
     else if (code === 'KeyM') toggleMode();
     else if (code === 'KeyZ') map.toggle();
+    else if (code === 'Wheel') cycleWeapon();
+    else if ((code === 'Digit1' && sim.weapons.weapon !== 'gun') || (code === 'Digit2' && sim.weapons.weapon !== 'drill')) cycleWeapon();
     else if (code === 'KeyL') konsole.say(t(toggleSetting('headlight') ? 'headlight.on' : 'headlight.off'));
     else if (code === 'KeyR') respawnHome();
-    else if (code === 'KeyC') cycle('control', ['free', 'direct', 'classic']);
+    else if (code === 'KeyC') cycle('control', ['free', 'direct', 'stick', 'classic']);
     else if (code === 'KeyT') cycle(sim.ship.mode === 'sub' ? 'subTilt' : 'horizonTilt', [1, 0.5, 0.3, 0]);
     else if (code === 'KeyO') cycle('quality', ['low', 'medium', 'high']);
     else if (code === 'Escape') panel.toggle();
     else if (code === 'Slash' || code === 'NumpadDivide') openConsole();
   };
   input.devices.push(new KeyboardMouse(canvas, input, settings, onKey));
-  const gamepad = new GamepadInput();
-  gamepad.onPress = (b) => { if (b === 8) map.toggle(); else if (b === 9) panel.toggle(); };
+  const gamepad = new GamepadInput(settings);
+  gamepad.onPress = (b) => { if (b === 8) map.toggle(); else if (b === 9) panel.toggle(); else if (b === 12) cycleWeapon(); };
   input.devices.push(gamepad);
   if (isTouch) input.devices.push(new TouchInput(hudRoot, input));
-  for (const [id, fn] of [['b-console', openConsole], ['b-mode', toggleMode], ['b-map', () => map.toggle()],
+  for (const [id, fn] of [['b-console', openConsole], ['b-mode', toggleMode], ['b-weapon', cycleWeapon], ['b-map', () => map.toggle()],
     ['b-settings', openPanel], ['b-respawn', respawnHome]] as const) {
     document.getElementById(id)!.addEventListener('click', (e) => { e.stopPropagation(); fn(); });
   }
@@ -291,8 +301,8 @@ async function boot(): Promise<void> {
     const p = rig.camera.globalPosition;
     return Math.max(0, 1 - Math.hypot(x - p.x, y - p.y, z - p.z) / max);
   };
-  const boreTunnel = (x: number, y: number, z: number, dx: number, dy: number, dz: number): void => {
-    const B = WEAPON.TUNNEL_BACKSET, L = WEAPON.TUNNEL_LENGTH, R = WEAPON.TUNNEL_RADIUS;
+  const boreTunnel = (x: number, y: number, z: number, dx: number, dy: number, dz: number, R: number, L: number): void => {
+    const B = WEAPON.TUNNEL_BACKSET;
     const res = carveCapsule(world, x - dx * B, y - dy * B, z - dz * B, x + dx * L, y + dy * L, z + dz * L, R);
     if (res.batch.length) chunks.invalidate(world.setNodes(res.batch));
     debris.spawn(res.removed, x, y, z, 3 + Math.floor(R * 2), { x: dx, y: dy, z: dz });
@@ -383,7 +393,7 @@ async function boot(): Promise<void> {
       if (e.type === 'flash') hud.flash(e.text, e.color);
       else if (e.type === 'explode') { explodeVoxels(e.x, e.y, e.z, e.r); audio.play('dw_impact_crash', 1); }
       else if (e.type === 'shot') { audio.play('dw_shot', 0.5, 0.05); effects.muzzle(e.x, e.y, e.z); }
-      else if (e.type === 'impact') boreTunnel(e.x, e.y, e.z, e.dx, e.dy, e.dz);
+      else if (e.type === 'impact') boreTunnel(e.x, e.y, e.z, e.dx, e.dy, e.dz, e.r, e.len);
       else if (e.type === 'carve') { const res = carveAlong(world, e.pts, e.r); if (res.batch.length) chunks.invalidate(world.setNodes(res.batch)); }
       else if (e.type === 'race_end') {
         konsole.say(e.ok ? t('race.finished', formatTime(e.time), e.cp, e.cpTotal, e.score) : t('race.failed'));

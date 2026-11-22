@@ -40,8 +40,8 @@ export type SimEvent =
   | { type: 'explode'; x: number; y: number; z: number; r: number }
   | { type: 'died' }
   | { type: 'respawned' }
-  | { type: 'shot'; x: number; y: number; z: number }
-  | { type: 'impact'; x: number; y: number; z: number; dx: number; dy: number; dz: number }
+  | { type: 'shot'; x: number; y: number; z: number; drill: boolean }
+  | { type: 'impact'; x: number; y: number; z: number; dx: number; dy: number; dz: number; r: number; len: number }
   | { type: 'carve'; pts: number[]; r: number }
   | { type: 'checkpoint' }
   | { type: 'race_end'; ok: boolean; time: number; cp: number; cpTotal: number; score: number };
@@ -91,7 +91,7 @@ export function checkTriggers(p: Pilot, s: ShipState, e: TrickEvents, ev: SimEve
     return;
   }
   // boost: PLACE (E / pravé tlačítko / A) nebo dvojťuk W — ve všech presetech
-  if ((e.tap & BTN.PLACE || e.double & BTN.UP) && s.boostMeter >= 25 && s.boostTime <= 0 && s.mode === 'fighter') {
+  if ((e.tap & BTN.PLACE || e.double & BTN.UP) && s.boostMeter >= 25 && s.boostTime <= 0 && s.mode !== 'sub') {
     s.boostMeter -= 25;
     s.boostTime = 2.0;
     ev.push({ type: 'boost' }, { type: 'flash', text: 'BOOST!', color: '#66CCFF' });

@@ -6,11 +6,13 @@ export type ViewMode = 'nose' | 'chase';
 export type Quality = 'low' | 'medium' | 'high';
 
 export interface Settings {
-  mode: ShipMode;            // /mode: ponorka (výchozí jako v Luanti) / stíhačka
+  mode: ShipMode;            // /mode: ponorka (výchozí jako v Luanti) / stíhačka / stíhačka 6DoF
   control: ControlPreset;
   horizonTilt: number;       // 0 … 1 (stíhačka)
   subTilt: number;           // 0 … 1 (ponorka)
   view: ViewMode;
+  /** zoom kamery jako log2: −2 … 2 = 0,25× … 4× (FOV podle TUNING.fov) */
+  zoom: number;
   quality: Quality;
   mouseSens: number;         // rad / px
   invertY: boolean;
@@ -38,7 +40,8 @@ export const TUNING = {
   touchAimSens: 0.006,       // rad / px
   chaseOffset: { x: 0, y: 2.5, z: -10 },
   chaseStiffness: 18,        // 1/s, kriticky tlumená pružina
-  fov: 1.15,                 // rad (≈ 66°)
+  fov: 1.15,                 // rad (≈ 66°) při zoomu 1×
+  zoomRange: 2,              // posuvník zoomu: ±2 = 0,25× … 4×
   // Impostory vzdálených ostrovů (plán §10): dohled podle kvality
   impostorRange: { low: 1200, medium: 1600, high: 2000 },
   impostorSegments: { low: 20, medium: 28, high: 32 },
@@ -58,7 +61,7 @@ const KEY = 'babylonwars.settings.v2';
 const isTouch = typeof matchMedia !== 'undefined' && matchMedia('(pointer: coarse)').matches;
 
 export const defaults = (): Settings => ({
-  mode: 'sub', control: 'free', horizonTilt: 1, subTilt: 0.3, view: 'chase',
+  mode: 'sub', control: 'free', horizonTilt: 1, subTilt: 0.3, view: 'chase', zoom: 0,
   quality: isTouch ? 'low' : 'high', mouseSens: 0.0022, invertY: false,
   lang: defaultLang(), music: true, musicVolume: 0.6, sfxVolume: 0.8,
   headlight: true, radar: true, attitude: true, stats: false, bridgeUrl: '',

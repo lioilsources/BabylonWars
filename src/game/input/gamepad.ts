@@ -1,10 +1,13 @@
 // Gamepad API, standardní mapování.
 // Levá páčka: X náklon/úkrok, Y plyn · pravá páčka: zaměřovač
-// RT střelba · A / LB boost · RB nahoru · LT dolů · d-pad ←/→ výkrut
+// RT střelba · A / LB boost · RB nahoru · LT dolů · d-pad ←/→ výkrut · d-pad ↑ zbraň
 // Back/View mapa · Start/Menu nastavení
 import { BTN, type InputFrame } from '../../sim/input';
-import { TUNING } from '../settings';
+import { TUNING, type Settings } from '../settings';
 import type { InputDevice } from './input-manager';
+
+/** hrany tlačítek: Back/View mapa, Start/Menu nastavení, d-pad ↑ zbraň */
+const PRESS = [8, 9, 12];
 
 const dz = (v: number): number => {
   const d = TUNING.gamepadDeadzone;
@@ -19,15 +22,17 @@ export class GamepadInput implements InputDevice {
   /** hrana stisku: Back/View (8) mapa, Start/Menu (9) nastavení */
   onPress: (button: number) => void = () => {};
 
+  constructor(private settings: Settings) {}
+
   poll(): void {
     this.pad = null;
     for (const p of navigator.getGamepads?.() ?? []) if (p && p.connected) { this.pad = p; break; }
     this.connected = !!this.pad;
     let now = 0;
-    if (this.pad) for (const i of [8, 9]) if (this.pad.buttons[i]?.pressed) now |= 1 << i;
+    if (this.pad) for (const i of PRESS) if (this.pad.buttons[i]?.pressed) now |= 1 << i;
     const edge = now & ~this.prev;
     this.prev = now;
-    for (const i of [8, 9]) if (edge & (1 << i)) this.onPress(i);
+    for (const i of PRESS) if (edge & (1 << i)) this.onPress(i);
   }
 
   fill(f: InputFrame, dt: number): void {
@@ -38,9 +43,14 @@ export class GamepadInput implements InputDevice {
     f.strafe += lx;
     f.thrust += ly;
     const rx = dz(a[2] ?? 0), ry = dz(a[3] ?? 0);
-    // kvadratická křivka = jemné míření u středu
-    f.aimDX += rx * Math.abs(rx) * TUNING.gamepadAimRate * dt;
-    f.aimDY += -ry * Math.abs(ry) * TUNING.gamepadAimRate * dt;
+    if (this.settings.control === 'stick' && this.settings.mode !== 'sub') {
+      // páčka je sama knipl: výchylka = rychlost otáčení
+      f.padX += rx; f.padY += -ry;
+    } else {
+      // kvadratická křivka = jemné míření u středu
+      f.aimDX += rx * Math.abs(rx) * TUNING.gamepadAimRate * dt;
+      f.aimDY += -ry * Math.abs(ry) * TUNING.gamepadAimRate * dt;
+    }
     f.vertical += b(5) - b(6);
     f.roll += b(15) - b(14);
     const fire = b(7) > 0.5, place = b(0) > 0.5 || b(4) > 0.5;

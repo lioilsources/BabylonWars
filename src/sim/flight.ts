@@ -14,8 +14,10 @@ import {
   v3normalize, vec3,
 } from './math';
 
-export type ControlPreset = 'classic' | 'free' | 'direct';
-export type ShipMode = 'sub' | 'fighter';
+// stick = myš jako joystick: výchylka od středu určuje rychlost otáčení
+export type ControlPreset = 'classic' | 'free' | 'direct' | 'stick';
+// space = stíhačka 6DoF: A/D úkrok, Space/Shift nahoru/dolů, Q/E výkrut
+export type ShipMode = 'sub' | 'fighter' | 'space';
 
 export interface ScriptedTrick {
   name: 'barrel_roll' | 'loop' | 'immelmann';
@@ -33,6 +35,8 @@ export interface ShipState {
   // Euler stav pro classic a ponorku (vehicle.lua)
   heading: number; pitch: number; roll: number;
   lookH: number; lookV: number;     // zaměřovač: kurz a sklon (lookV kladný = nahoru)
+  /** virtuální knipl řízení `stick` (−1…1, kladné Y = nos nahoru) */
+  stickX: number; stickY: number;
   hp: number;
   boostMeter: number;               // 0…100 (tricks.lua)
   boostTime: number;
@@ -49,7 +53,7 @@ export function createShip(pos: Vec3, heading = 0, mode: ShipMode = 'fighter'): 
   const s: ShipState = {
     pos: vec3(pos.x, pos.y, pos.z), vel: vec3(), att: quat(), speed: mode === 'sub' ? 0 : 15, aim: vec3(),
     mode, control: 'free',
-    heading, pitch: 0, roll: 0, lookH: heading, lookV: 0,
+    heading, pitch: 0, roll: 0, lookH: heading, lookV: 0, stickX: 0, stickY: 0,
     hp: 100, boostMeter: 50, boostTime: 0, iframes: 0, crashCooldown: 0, trick: null,
     rollAccum: 0, pitchAccum: 0, calmTime: 0, thr: 0,
   };
@@ -63,6 +67,23 @@ const ROLL_GAIN = 3.0;
 const AIM_MAX_ANGLE = 1.2;
 const DIRECT_ROLL_RATE = C.ROLL_SPEED * 1.4;
 export const BOOST_SPEED = 60;
+
+/** Myš jako joystick (řízení `stick`) */
+export const STICK = {
+  RANGE: 0.45,          // rad pohybu myši (po citlivosti) na plnou výchylku
+  DEADZONE: 0.08,       // mrtvá zóna u středu (podíl výchylky)
+  PITCH_RATE: 2.4,      // rad/s při plné výchylce (looping ≈ 2,6 s)
+  YAW_RATE: 1.8,
+} as const;
+
+/** Stíhačka 6DoF (režim `space`): cílové rychlosti v osách trupu, asistence letu */
+export const SPACE = {
+  SURGE: C.SPEED_MAX,   // W/S
+  SWAY: 22,             // A/D
+  HEAVE: 22,            // Space/Shift
+  ACCEL: 32,            // m/s² k cílové rychlosti
+  ROLL_RATE: 2.6,       // rad/s (Q/E)
+} as const;
 
 const tFwd = vec3(), tRight = vec3(), tUp = vec3(), tE = vec3();
 const tCamAtt = quat(), tConj = quat(), tDq = quat(), tQ = quat();
@@ -113,6 +134,37 @@ export function headingAngle(att: Quat): number {
   return Math.atan2(tFwd.x, tFwd.z);
 }
 
+/** Mrtvá zóna + přeškálování: čím dál od středu, tím rychleji */
+const stickCurve = (v: number): number => {
+  const a = Math.abs(v);
+  return a <= STICK.DEADZONE ? 0 : Math.sign(v) * (a - STICK.DEADZONE) / (1 - STICK.DEADZONE);
+};
+
+/** Pohyb myši posouvá virtuální knipl (drží výchylku, dokud ho hráč nevrátí) */
+export function updateStick(s: ShipState, inp: InputFrame): void {
+  let x = s.stickX + inp.aimDX / STICK.RANGE, y = s.stickY + inp.aimDY / STICK.RANGE;
+  const l = Math.hypot(x, y);
+  if (l > 1) { x /= l; y /= l; }
+  s.stickX = x; s.stickY = y;
+}
+
+/** Výsledná výchylka kniplu (myš + gamepad), −1…1 */
+function stickAxes(s: ShipState, inp: InputFrame): { x: number; y: number } {
+  stickTmp.x = clamp(stickCurve(s.stickX) + inp.padX, -1, 1);
+  stickTmp.y = clamp(stickCurve(s.stickY) + inp.padY, -1, 1);
+  return stickTmp;
+}
+const stickTmp = { x: 0, y: 0 };
+
+/** Eulerův stav (kurz, sklon) z orientace — přechod mezi presety a režimy bez skoku */
+export function syncEuler(s: ShipState): void {
+  s.heading = headingAngle(s.att);
+  s.pitch = pitchAngle(s.att);
+  s.roll = 0;
+  s.lookH = Math.atan2(s.aim.x, s.aim.z);
+  s.lookV = Math.asin(clamp(s.aim.y, -1, 1));
+}
+
 export function integrateAttitude(att: Quat, pitchRate: number, yawRate: number, rollRate: number, dt: number): void {
   qfromBodyRates(tDq, pitchRate, yawRate, rollRate, dt);
   qmul(att, att, tDq);
@@ -127,7 +179,15 @@ const steerOut: SteerOut = { pitchRate: 0, rollRate: 0, drifting: false };
 export function steerFighter(s: ShipState, inp: InputFrame, dt: number, horizonTilt: number): SteerOut {
   steerOut.pitchRate = 0; steerOut.rollRate = 0; steerOut.drifting = false;
   if (s.control === 'classic') steerClassic(s, inp, dt);
-  else if (s.control === 'direct') {
+  else if (s.control === 'stick') {
+    updateStick(s, inp);
+    const k = stickAxes(s, inp);
+    const pr = k.y * STICK.PITCH_RATE + inp.vertical * C.PITCH_RATE;
+    const rr = clamp(inp.strafe + inp.roll, -1, 1) * DIRECT_ROLL_RATE;
+    integrateAttitude(s.att, pr, k.x * STICK.YAW_RATE, rr, dt);
+    qaxis(s.aim, s.att, 2);
+    steerOut.pitchRate = pr; steerOut.rollRate = rr;
+  } else if (s.control === 'direct') {
     const pr = inp.aimDY / dt + inp.vertical * C.PITCH_RATE;
     const rr = clamp(inp.strafe + inp.roll, -1, 1) * DIRECT_ROLL_RATE;
     integrateAttitude(s.att, pr, inp.aimDX / dt, rr, dt);
@@ -211,6 +271,42 @@ function steerClassic(s: ShipState, inp: InputFrame, dt: number): void {
   attFromEuler(s.att, s.heading, s.pitch, s.roll);
   lookDir(s.aim, s.lookH, s.lookV);
 }
+
+/**
+ * Stíhačka 6DoF: myš pitch/yaw (v `stick` jako knipl, jinak přímo), Q/E výkrut,
+ * W/S A/D Space/Shift posun v osách trupu. Žádné auto-vyrovnání ani gravitace;
+ * asistence letu dorovnává rychlost k cílové (puštěné klávesy = zastavení).
+ */
+export function stepSpace(s: ShipState, inp: InputFrame, dt: number): SteerOut {
+  let pr: number, yr: number;
+  if (s.control === 'stick') {
+    updateStick(s, inp);
+    const k = stickAxes(s, inp);
+    pr = k.y * STICK.PITCH_RATE; yr = k.x * STICK.YAW_RATE;
+  } else { pr = inp.aimDY / dt; yr = inp.aimDX / dt; }
+  const rr = clamp(inp.roll, -1, 1) * SPACE.ROLL_RATE;
+  integrateAttitude(s.att, pr, yr, rr, dt);
+
+  const thr = clamp(inp.thrust, -1, 1);
+  s.thr = thr;
+  let surge = thr * SPACE.SURGE;
+  if (s.boostTime > 0) { s.boostTime -= dt; surge = BOOST_SPEED; }
+  qaxis(tFwd, s.att, 2); qaxis(tRight, s.att, 0); qaxis(tUp, s.att, 1);
+  const sway = clamp(inp.strafe, -1, 1) * SPACE.SWAY, heave = clamp(inp.vertical, -1, 1) * SPACE.HEAVE;
+  const v = s.vel;
+  const dx = tFwd.x * surge + tRight.x * sway + tUp.x * heave - v.x;
+  const dy = tFwd.y * surge + tRight.y * sway + tUp.y * heave - v.y;
+  const dz = tFwd.z * surge + tRight.z * sway + tUp.z * heave - v.z;
+  const dl = Math.hypot(dx, dy, dz), a = SPACE.ACCEL * (s.boostTime > 0 ? 3 : 1) * dt;
+  const k = dl > a ? a / dl : 1;
+  v.x += dx * k; v.y += dy * k; v.z += dz * k;
+  s.speed = Math.hypot(v.x, v.y, v.z);
+  v3copyAxis(s.aim, tFwd);
+  steerOut.pitchRate = pr; steerOut.rollRate = rr; steerOut.drifting = false;
+  return steerOut;
+}
+
+const v3copyAxis = (out: Vec3, a: Vec3): void => { out.x = a.x; out.y = a.y; out.z = a.z; };
 
 /** Ponorka: 5DoF hover (vehicle.lua:236–298); v `direct` navíc výkrut Q/E */
 export function stepSub(s: ShipState, inp: InputFrame, dt: number): void {

@@ -8,7 +8,7 @@ export interface CommandContext {
   pos(): { x: number; y: number; z: number };
   teleport(x: number, y: number, z: number, yaw?: number): void;
   say(msg: string): void;
-  setMode(mode: 'sub' | 'fighter'): void;
+  setMode(mode: 'sub' | 'fighter' | 'space'): void;
   /** přepínač z nastavení (music, headlight, radar); on = undefined přepne */
   toggle(key: 'music' | 'headlight' | 'radar', on?: boolean): boolean;
   toggleMap(): void;
@@ -63,7 +63,7 @@ const COMMANDS: Record<string, { help: () => string; run: Handler }> = {
     help: () => t('cmd.mode'),
     run: (args, ctx) => {
       const m = (args[0] ?? '').toLowerCase();
-      if (m === 'sub' || m === 'fighter') ctx.setMode(m);
+      if (m === 'sub' || m === 'fighter' || m === 'space') ctx.setMode(m);
       else ctx.say(t('cmd.modeUsage'));
     },
   },

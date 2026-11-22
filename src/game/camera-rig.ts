@@ -28,6 +28,11 @@ export class CameraRig {
     scene.activeCamera = this.camera;
   }
 
+  /** zoom (1 = výchozí FOV): zmenší/zvětší tangens poloviny zorného úhlu */
+  setZoom(zoom: number): void {
+    this.camera.fov = Math.min(2.6, 2 * Math.atan(Math.tan(TUNING.fov / 2) / zoom));
+  }
+
   setView(view: ViewMode): void {
     const o = view === 'nose' ? EYE_OFFSET : TUNING.chaseOffset;
     this.camera.position.set(o.x, o.y, o.z);
