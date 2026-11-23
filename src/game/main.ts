@@ -288,7 +288,8 @@ async function boot(): Promise<void> {
   const gamepad = new GamepadInput(settings);
   gamepad.onPress = (b) => { if (b === 8) map.toggle(); else if (b === 9) panel.toggle(); else if (b === 12) cycleWeapon(); };
   input.devices.push(gamepad);
-  if (isTouch) input.devices.push(new TouchInput(hudRoot, input));
+  const touch = isTouch ? new TouchInput(hudRoot, input, () => cycleWeapon()) : null;
+  if (touch) input.devices.push(touch);
   for (const [id, fn] of [['b-console', openConsole], ['b-mode', toggleMode], ['b-weapon', cycleWeapon], ['b-map', () => map.toggle()],
     ['b-settings', openPanel], ['b-respawn', respawnHome]] as const) {
     document.getElementById(id)!.addEventListener('click', (e) => { e.stopPropagation(); fn(); });
@@ -454,6 +455,7 @@ async function boot(): Promise<void> {
     // zaměřovač podle zbraně: vrták = oranžový kruh, oblouk ukazuje nádrž
     const drill = sim.weapons.weapon === 'drill';
     aimEl.classList.toggle('drill', drill);
+    touch?.setWeapon(drill);
     if (drill) aimEl.style.setProperty('--charge', sim.weapons.drill.toFixed(2));
     project(s.aim, aimEl);
     project(tmp, noseEl);
