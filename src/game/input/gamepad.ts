@@ -42,6 +42,7 @@ export class GamepadInput implements InputDevice {
     const lx = dz(a[0] ?? 0), ly = -dz(a[1] ?? 0);
     f.strafe += lx;
     f.thrust += ly;
+    f.stickThrottle ||= ly !== 0;
     const rx = dz(a[2] ?? 0), ry = dz(a[3] ?? 0);
     if (this.settings.control === 'stick' && this.settings.mode !== 'sub') {
       // páčka je sama knipl: výchylka = rychlost otáčení

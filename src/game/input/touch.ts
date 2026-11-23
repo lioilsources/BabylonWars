@@ -74,6 +74,7 @@ export class TouchInput implements InputDevice {
     f.vertical += (this.up ? 1 : 0) - (this.down ? 1 : 0);
     f.fire ||= this.fire;
     f.boost ||= this.boost;
+    f.stickThrottle ||= this.stickId !== null;
     f.buttons |= (y > 0.5 ? BTN.UP : 0) | (y < -0.5 ? BTN.DOWN : 0) | (x < -0.5 ? BTN.LEFT : 0) | (x > 0.5 ? BTN.RIGHT : 0)
       | (this.up ? BTN.JUMP : 0) | (this.down ? BTN.SNEAK : 0) | (this.boost ? BTN.PLACE : 0) | (this.fire ? BTN.FIRE : 0);
   }

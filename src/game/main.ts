@@ -451,6 +451,10 @@ async function boot(): Promise<void> {
     audio.update(dt, rPos.x, rPos.z, seed);
     scene.render();
 
+    // zaměřovač podle zbraně: vrták = oranžový kruh, oblouk ukazuje nádrž
+    const drill = sim.weapons.weapon === 'drill';
+    aimEl.classList.toggle('drill', drill);
+    if (drill) aimEl.style.setProperty('--charge', sim.weapons.drill.toFixed(2));
     project(s.aim, aimEl);
     project(tmp, noseEl);
     const bl = collectBlips();
