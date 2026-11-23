@@ -1,5 +1,5 @@
 // Dotyk: levý virtuální joystick (X náklon/úkrok, Y plyn), tah pravým palcem
-// = zaměřovač, tlačítka střelba / boost / nahoru / dolů / přepnutí zbraně.
+// = zaměřovač, tlačítka střelba / boost / nahoru / dolů / výkrut / přepnutí zbraně.
 import { BTN, type InputFrame } from '../../sim/input';
 import { TUNING } from '../settings';
 import type { InputDevice, InputManager } from './input-manager';
@@ -14,6 +14,9 @@ export class TouchInput implements InputDevice {
   private boost = false;
   private up = false;
   private down = false;
+  private rollL = false;
+  private rollR = false;
+  private rollBtns: HTMLElement[];
   private knob: HTMLElement;
   private base: HTMLElement;
   private weaponBtn: HTMLElement;
@@ -31,6 +34,11 @@ export class TouchInput implements InputDevice {
     hold(this.weaponBtn, (v) => { if (v) onWeapon(); });
     hold(el(root, 'btn btn-up', '▲'), (v) => { this.up = v; });
     hold(el(root, 'btn btn-down', '▼'), (v) => { this.down = v; });
+    // výkrut (Q/E): bez něj nejde 6DoF loď na telefonu srovnat
+    const rl = el(root, 'btn btn-roll-l', '↺'), rr = el(root, 'btn btn-roll-r', '↻');
+    hold(rl, (v) => { this.rollL = v; });
+    hold(rr, (v) => { this.rollR = v; });
+    this.rollBtns = [rl, rr];
 
     const zone = root.querySelector<HTMLElement>('#touch-zone')!;
     zone.addEventListener('pointerdown', (e) => {
@@ -71,6 +79,12 @@ export class TouchInput implements InputDevice {
     zone.addEventListener('pointercancel', end);
   }
 
+  /** výkrut jen tam, kde něco dělá (ponorka ho má jen v řízení `direct`) */
+  setRollVisible(on: boolean): void {
+    for (const b of this.rollBtns) b.style.display = on ? '' : 'none';
+    if (!on) { this.rollL = false; this.rollR = false; }
+  }
+
   /** popisek tlačítka podle vybrané zbraně */
   setWeapon(drill: boolean): void {
     const txt = drill ? '◆' : '●';
@@ -83,6 +97,7 @@ export class TouchInput implements InputDevice {
     f.strafe += x;
     f.thrust += y;
     f.vertical += (this.up ? 1 : 0) - (this.down ? 1 : 0);
+    f.roll += (this.rollR ? 1 : 0) - (this.rollL ? 1 : 0);
     f.fire ||= this.fire;
     f.boost ||= this.boost;
     f.stickThrottle ||= this.stickId !== null;

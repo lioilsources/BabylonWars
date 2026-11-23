@@ -456,6 +456,7 @@ async function boot(): Promise<void> {
     const drill = sim.weapons.weapon === 'drill';
     aimEl.classList.toggle('drill', drill);
     touch?.setWeapon(drill);
+    touch?.setRollVisible(s.mode !== 'sub' || settings.control === 'direct');
     if (drill) aimEl.style.setProperty('--charge', sim.weapons.drill.toFixed(2));
     project(s.aim, aimEl);
     project(tmp, noseEl);
