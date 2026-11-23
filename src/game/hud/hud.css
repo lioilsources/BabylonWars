@@ -13,6 +13,8 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: #2e3155; tou
 #error { position: absolute; inset: 40% 10% auto; background: #a00c; padding: 12px; border-radius: 8px; text-align: center; }
 .marker { position: absolute; left: 0; top: 0; width: 0; height: 0; }
 #aim::before { content: ''; position: absolute; left: -11px; top: -11px; width: 18px; height: 18px; border: 2px solid #fff; border-radius: 50%; box-shadow: 0 0 2px #000a; }
+#aim.drill::before { left: -16px; top: -16px; width: 32px; height: 32px; border: 0; box-shadow: none; background: conic-gradient(#ff9a3c calc(var(--charge, 1) * 1turn), #ffffff38 0); -webkit-mask: radial-gradient(circle, transparent 11px, #000 12px); mask: radial-gradient(circle, transparent 11px, #000 12px); }
+#aim.drill::after { content: ''; position: absolute; left: -4px; top: -4px; width: 8px; height: 8px; background: #ff9a3c; transform: rotate(45deg); box-shadow: 0 0 3px #000a; }
 #nose::before { content: '+'; position: absolute; left: -6px; top: -11px; font-size: 18px; color: #ffe066; text-shadow: var(--shadow); }
 
 /* hud.lua: kompas nahoře uprostřed (mono), kurz pod ním */

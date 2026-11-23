@@ -62,12 +62,12 @@ export class Sim {
     else if (s.mode === 'space') {
       const out = stepSpace(s, inp, dt);
       detectTricks(this.pilot, s, out.pitchRate, out.rollRate, dt, now, ev);
-      checkTriggers(this.pilot, s, e, ev);
+      checkTriggers(this.pilot, s, e, ev, !inp.stickThrottle);
     } else {
       const out = steerFighter(s, inp, dt, horizonTilt);
       if (out.drifting) this.pilot.score += 50 * dt;
       if (s.control !== 'classic') detectTricks(this.pilot, s, out.pitchRate, out.rollRate, dt, now, ev);
-      checkTriggers(this.pilot, s, e, ev);
+      checkTriggers(this.pilot, s, e, ev, !inp.stickThrottle);
     }
 
     this.move(dt);

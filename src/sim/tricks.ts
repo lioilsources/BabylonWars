@@ -73,7 +73,7 @@ export function award(p: Pilot, s: ShipState, now: number, label: string, points
 }
 
 /** tricks.check_triggers (bez aktivního triku) */
-export function checkTriggers(p: Pilot, s: ShipState, e: TrickEvents, ev: SimEvent[]): void {
+export function checkTriggers(p: Pilot, s: ShipState, e: TrickEvents, ev: SimEvent[], doubleW = true): void {
   if (s.trick) return;
   const classic = s.control === 'classic' && s.mode === 'fighter';
   if (classic && e.double & (BTN.LEFT | BTN.RIGHT)) {
@@ -90,8 +90,8 @@ export function checkTriggers(p: Pilot, s: ShipState, e: TrickEvents, ev: SimEve
     start(s, 'immelmann', 1.2, 1);
     return;
   }
-  // boost: PLACE (E / pravé tlačítko / A) nebo dvojťuk W — ve všech presetech
-  if ((e.tap & BTN.PLACE || e.double & BTN.UP) && s.boostMeter >= 25 && s.boostTime <= 0 && s.mode !== 'sub') {
+  // boost: PLACE (F / pravé tlačítko / A) nebo dvojťuk W (jen klávesnice) — ve všech presetech
+  if ((e.tap & BTN.PLACE || (doubleW && e.double & BTN.UP)) && s.boostMeter >= 25 && s.boostTime <= 0 && s.mode !== 'sub') {
     s.boostMeter -= 25;
     s.boostTime = 2.0;
     ev.push({ type: 'boost' }, { type: 'flash', text: 'BOOST!', color: '#66CCFF' });

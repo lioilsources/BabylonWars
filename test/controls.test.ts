@@ -1,7 +1,7 @@
 // Řízení „myš jako joystick“, stíhačka 6DoF a vrták s nádrží.
 import { describe, expect, it } from 'vitest';
 import { STICK, SPACE } from '../src/sim/flight';
-import { emptyInput, type InputFrame } from '../src/sim/input';
+import { BTN, emptyInput, type InputFrame } from '../src/sim/input';
 import { qaxis, vec3 } from '../src/sim/math';
 import { Sim } from '../src/sim/sim';
 import { WEAPON } from '../src/sim/weapons';
@@ -104,5 +104,21 @@ describe('vrták', () => {
     const sim = new Sim(air(), { x: 0, y: 500, z: 0, yaw: 0 }, 'fighter', 'free');
     run(sim, 600, (i) => { i.fire = true; });
     expect(sim.weapons.drill).toBe(1);
+  });
+});
+
+describe('boost omylem', () => {
+  const pulses = (stick: boolean): number => {
+    const sim = new Sim(air(), { x: 0, y: 500, z: 0, yaw: 0 }, 'fighter', 'free');
+    // dvakrát rychle plyn dopředu (≈ dvojťuk W)
+    run(sim, 40, (i, t) => {
+      const on = t < 6 || (t >= 12 && t < 18);
+      if (on) { i.thrust = 1; i.buttons |= BTN.UP; i.stickThrottle = stick; }
+    });
+    return sim.ship.boostTime;
+  };
+  it('dvojťuk W na klávesnici boostne, dvojí přitlačení páčky ne', () => {
+    expect(pulses(false)).toBeGreaterThan(0);
+    expect(pulses(true)).toBe(0);
   });
 });
