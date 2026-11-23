@@ -1,5 +1,5 @@
 // Dotyk: levý virtuální joystick (X náklon/úkrok, Y plyn), tah pravým palcem
-// = zaměřovač, tlačítka střelba / boost / nahoru / dolů.
+// = zaměřovač, tlačítka střelba / boost / nahoru / dolů / přepnutí zbraně.
 import { BTN, type InputFrame } from '../../sim/input';
 import { TUNING } from '../settings';
 import type { InputDevice, InputManager } from './input-manager';
@@ -16,8 +16,9 @@ export class TouchInput implements InputDevice {
   private down = false;
   private knob: HTMLElement;
   private base: HTMLElement;
+  private weaponBtn: HTMLElement;
 
-  constructor(root: HTMLElement, private mgr: InputManager) {
+  constructor(root: HTMLElement, private mgr: InputManager, onWeapon: () => void) {
     root.classList.add('touch');
     this.base = el(root, 'stick-base');
     this.knob = el(this.base, 'stick-knob');
@@ -25,6 +26,9 @@ export class TouchInput implements InputDevice {
     const boostBtn = el(root, 'btn btn-boost', 'BOOST');
     hold(fireBtn, (v) => { this.fire = v; });
     hold(boostBtn, (v) => { this.boost = v; });
+    // přepnutí zbraně hned u palce: ● kanón, ◆ vrták (jako zaměřovač)
+    this.weaponBtn = el(root, 'btn btn-weapon', '●');
+    hold(this.weaponBtn, (v) => { if (v) onWeapon(); });
     hold(el(root, 'btn btn-up', '▲'), (v) => { this.up = v; });
     hold(el(root, 'btn btn-down', '▼'), (v) => { this.down = v; });
 
@@ -65,6 +69,13 @@ export class TouchInput implements InputDevice {
     };
     zone.addEventListener('pointerup', end);
     zone.addEventListener('pointercancel', end);
+  }
+
+  /** popisek tlačítka podle vybrané zbraně */
+  setWeapon(drill: boolean): void {
+    const txt = drill ? '◆' : '●';
+    if (this.weaponBtn.textContent !== txt) this.weaponBtn.textContent = txt;
+    this.weaponBtn.classList.toggle('drill', drill);
   }
 
   fill(f: InputFrame): void {

@@ -89,6 +89,8 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: #2e3155; tou
 .btn.on { background: #fff6; }
 .btn-fire { width: 76px; height: 76px; right: max(20px, env(safe-area-inset-right)); bottom: max(60px, env(safe-area-inset-bottom)); }
 .btn-boost { width: 58px; height: 58px; right: max(110px, env(safe-area-inset-right)); bottom: max(40px, env(safe-area-inset-bottom)); }
+.btn-weapon { width: 50px; height: 50px; right: max(108px, env(safe-area-inset-right)); bottom: max(112px, env(safe-area-inset-bottom)); font-size: 20px; color: #fff; }
+.btn-weapon.drill { color: #ff9a3c; border-color: #ff9a3c; }
 .btn-up, .btn-down { width: 46px; height: 46px; right: max(20px, env(safe-area-inset-right)); }
 .btn-up { bottom: max(200px, env(safe-area-inset-bottom)); }
 .btn-down { bottom: max(146px, env(safe-area-inset-bottom)); }
