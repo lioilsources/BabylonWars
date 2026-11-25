@@ -2,6 +2,7 @@
 
 Webová verze hry DoggioWars (Luanti): TypeScript + Babylon.js, plné 6DoF a náklon horizontu.
 Plán: `Prompts/00-PLAN-web-engine.md` (fáze F0–F7, každá končí akceptací hraním).
+Návrh multiplayeru (čeká na rozhodnutí vlastníka): `Prompts/01-PLAN-multiplayer.md` (fáze M0–M8).
 
 Odchylka od lang.md: komentáře v kódu česky (jako zdrojové repo DoggioWars, plán to tak určuje).
 
