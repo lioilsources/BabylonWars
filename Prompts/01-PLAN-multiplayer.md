@@ -2,8 +2,9 @@
 ### Plán pro Claude Code · `Prompts/01-PLAN-multiplayer.md`
 
 Stav k 25. 11. 2026, proti `main@6b0e8ac`. Limity služeb ověřeny týž den
-v dokumentaci Supabase a Cloudflare (odkazy v §12). Návrh čeká na rozhodnutí
-vlastníka (§11); do té doby neimplementuj.
+v dokumentaci Cloudflare (odkazy v §13). **Rozhodnuto 25. 11.:** celý backend
+běží na Cloudflare, bez Supabase. Zbylá rozhodnutí vlastníka jsou v §12;
+do té doby neimplementuj.
 
 ---
 
@@ -25,9 +26,7 @@ hraním na nasazené URL. **M1 je brána** — když neprojde, zastav a nahlas �
 
 ## 1. Odpovědi na otázky
 
-**Zvládne to Supabase?** Sama ne. Hodí se na to, v čem je silná (identita,
-adresář her, výsledky, žebříčky), ale živý přenos pozic přes Supabase Realtime
-nevyjde počtem zpráv:
+**Zvládne to Supabase?** Živý přenos pozic ne, kvůli počtu zpráv v Realtime:
 
 - Broadcast se účtuje jako 1 odeslaná + 1 za každého příjemce.
   8 hráčů × 10 Hz = 640 zpráv/s.
@@ -36,9 +35,14 @@ nevyjde počtem zpráv:
 - Na Pro ($25/měs.) stojí každý další milion $2,50, tedy asi $1 za
   desetiminutový zápas 4v4.
 
-**Bez vlastního serveru to jde.** Živý přenos poveze Cloudflare Durable Object
+**Rozhodnutí: všechno na Cloudflare.** Živý přenos poveze Durable Object
 (jedna „místnost“ = jeden objekt s WebSockety), zdarma zhruba do 41 plných
-zápasů 4v4 denně (§2.2). Náhradní cesta za 0 Kč navždy je P2P přes WebRTC (§4.6).
+zápasů 4v4 denně (§2.2). Seznam her, identitu a výsledky obstará tentýž Worker
+s databází D1 (§4.5). Odpadá druhá služba i její uspávání po týdnu nečinnosti.
+Náhradní cesta pro přenos je P2P přes WebRTC (§4.6).
+
+**Budou spolu hrát web, mobil a Luanti?** Web, PWA a mobilní appky ano — je to
+jeden klient. Luanti v reálném čase ne. Podrobně §11.
 
 **Frakce ponorky × stíhačky:** doporučuju **stejné týmy s rolemi** (každý tým
 má stavitele, ženisty i běžce). Čistě frakční souboj se nedá vyvážit jako CTF —
@@ -76,9 +80,14 @@ strany prohodí, takže je to férové i při nesouměrných lodích.
 | Služba | K čemu | Zdarma | Když nestačí |
 |---|---|---|---|
 | GitHub Pages | klient (jako dnes) | ano | — |
-| Cloudflare Durable Objects | místnosti | 100 000 požadavků denně; 20 příchozích WS zpráv = 1 požadavek, odchozí zdarma; 13 000 GB-s denně | Workers Paid $5/měs.: 1 mil. požadavků + $0,15 za další milion; 400 000 GB-s + $12,50 za milion |
-| Supabase | identita, adresář her, výsledky, žebříčky | 2 projekty, 50 000 uživatelů měsíčně, 500 000 volání Edge Functions; **projekt se po týdnu nečinnosti uspí** | Pro od $25/měs. |
+| Cloudflare Workers | vstupní bod, lobby, žebříčky | 100 000 požadavků denně, 10 ms CPU na požadavek; připojení WebSocketu je 1 požadavek, zprávy se nepočítají | Workers Paid $5/měs.: 10 mil. požadavků měsíčně |
+| Cloudflare Durable Objects | místnosti | 100 000 požadavků denně; 20 příchozích WS zpráv = 1 požadavek, odchozí zdarma; 13 000 GB-s denně | v témže plánu za $5: 1 mil. požadavků + $0,15 za další milion; 400 000 GB-s + $12,50 za milion |
+| Cloudflare D1 | hráči, výsledky, žebříčky | 5 mil. přečtených a 100 000 zapsaných řádků denně, 5 GB | vyšší limity v placeném plánu |
+| Cloudflare R2 | duchové závodů (M7) | 10 GB, 1 mil. zápisů a 10 mil. čtení měsíčně, přenos ven zdarma | $0,015 za GB měsíčně |
 | Cloudflare TURN | jen varianta P2P (§4.6) | 1 000 GB | $0,05/GB |
+
+Všechno je jeden účet a jedno nasazení; placený plán za $5 měsíčně pokrývá
+Workers i Durable Objects najednou.
 
 Co z toho plyne pro místnosti (klient posílá 1 zprávu za 100 ms):
 
@@ -92,7 +101,9 @@ Co z toho plyne pro místnosti (klient posílá 1 zprávu za 100 ms):
 **Neověřeno:** poměr 20 : 1 je v dokumentaci popsán „pro účtování“. Jestli se
 stejně počítá i denní limit free plánu, změří M1 v dashboardu. Kdyby ne,
 free plán stačí jen na zkoušení a ostrý provoz znamená $5 měsíčně nebo
-variantu P2P.
+variantu P2P. Druhá neznámá je limit CPU: dokumentace uvádí 10 ms na požadavek
+Workeru ve free plánu a 30 s pro Durable Objects, ale neříká, co platí pro
+objekt na free plánu. Sloučení snímku pro 8 hráčů je levné; i tak to změř.
 
 ---
 
@@ -105,16 +116,19 @@ variantu P2P.
 | Pravidla | čistá třída `RoomCore` v `src/net/`, kterou Worker jen obaluje | testy bez sítě; stejný kód poběží u hostitele ve variantě P2P |
 | Synchronizace | snímky 10 Hz + interpolace se zpožděním 150 ms, žádný lockstep | viz §2.1 |
 | Svět | log operací (`carve`, `place`, `degrade`) s pořadovým číslem z místnosti | malé zprávy, stejný výsledek všude, pozdní připojení přehraje log |
-| Supabase | anonymní přihlášení, `profiles`, `rooms`, `matches`; **žádný Realtime** | kvóta zpráv (§1); adresář stačí číst dotazem jednou za 10 s |
-| Odolnost | soukromá hra přes odkaz funguje i bez Supabase | uspaný projekt nesmí rozbít hraní s kamarádem |
-| Zápis výsledků | jen Worker (service role v `wrangler secret`), klient nikdy | žebříček nejde podvrhnout z konzole |
+| Backend | **jen Cloudflare**: Worker, objekty `Room` a `Lobby`, databáze D1; žádný Supabase | rozhodnutí vlastníka 25. 11.; jeden účet, jedno nasazení, nic se neuspává |
+| Identita | bez účtů: zařízení dostane od Workeru id a podepsaný token, jméno se vygeneruje | nulový práh vstupu; účty až kdyby byly potřeba |
+| Odolnost | soukromá hra přes odkaz potřebuje jen místnost, ne lobby ani D1 | výpadek seznamu her nesmí rozbít hraní s kamarádem |
+| Zápis výsledků | jen místnost přes vazbu na D1, klient nikdy | žebříček nejde podvrhnout z konzole |
+| Klienti | **jeden klient v TypeScriptu** pro web, PWA, iOS i Android | §11 |
 | Komunikace | rychlé povely a značky, **žádný volný text** | bez moderování, funguje na dotyku i gamepadu, lokalizuje se sama |
 | Jména | generovaná („Modrý drak 42“), vlastní až později s filtrem | pravidla obchodů k obsahu od uživatelů |
 | Velikost | 2–8 hráčů v místnosti (4v4), později 12 | výkon telefonu a rozpočet zpráv |
 | UI | DOM + CSS jako dosud, bez frameworku | lobby jsou tři obrazovky |
 
-Do veřejného repa smí URL projektu Supabase a anon klíč (jsou veřejné
-z principu, chrání je RLS). Service role a klíče Cloudflare jen jako secrets.
+Adresa Workeru jde do klienta přes konfiguraci (`VITE_ROOMS_URL`; v repu jen
+`.env.example` se zástupnou hodnotou). Podpisový klíč tokenů, webhook Discordu
+a API token pro nasazení jsou jen secrets (`wrangler secret`, GitHub Actions).
 
 ---
 
@@ -135,8 +149,8 @@ src/sim/
   classes.ts        # tabulka rolí (trup, rychlosti, nástroje)
   modes/{coop,siege,ctf}.ts   # stavové automaty módů, sdílí je klient i RoomCore
 src/game/net/       # WebSocket transport, lobby, jmenovky, tabulka skóre
-server/             # Cloudflare Worker + DO Room (wrangler); importuje src/net a src/sim
-supabase/           # migrace, RLS, Edge Functions
+server/             # Cloudflare Worker, objekty Room a Lobby, migrace D1 (wrangler);
+                    # importuje src/net a src/sim
 test/net.test.ts    # 2–8 klientů a RoomCore přes falešný transport se zpožděním a ztrátami
 ```
 
@@ -171,6 +185,8 @@ autora** počítají díru z kvantovaných hodnot — jinak se světy rozejdou.
   pokračuje. Nasazuj mimo herní večery.
 - Při připojení posílá verzi protokolu. Starší klient dostane „aktualizuj“
   (na webu tlačítko z PR #10, v obchodech odkaz na aktualizaci).
+- Worker pustí WebSocket jen z povolených originů: Pages, `capacitor://localhost`
+  (iOS), `https://localhost` (Android) a vývojový server.
 
 ### 4.4 Pozdní připojení a rozpočet úprav
 
@@ -181,32 +197,39 @@ autora** počítají díru z kvantovaných hodnot — jinak se světy rozejdou.
 - `EditStore` dnes drží `Map` na chunk; při hustém kopání přejdi na husté
   pole `Uint8Array(32³)` pro chunk nad ~1 000 úprav. Změř paměť na telefonu.
 
-### 4.5 Supabase
+### 4.5 Lobby, identita a výsledky
 
-```
-profiles(id → auth.users, nick, created_at)
-rooms(code, mode, players, max_players, public, proto, updated_at)   -- píše jen Worker
-matches(id, mode, seed, started_at, duration_s, score_a, score_b, proto)
-match_players(match_id, user_id, team, class, points, captures, kills, built, breached)
-```
+- **Identita:** při prvním spuštění vrátí `POST /hello` id hráče, vygenerované
+  jméno a token podepsaný klíčem Workeru (HMAC). Klient si je uloží a posílá
+  při připojení. Žádné účty, e-maily ani hesla.
+- **Lobby:** jeden objekt `Lobby` drží seznam veřejných místností. Místnost se
+  mu hlásí při změně počtu hráčů a jednou za 30 s. `GET /lobby` vrací seznam
+  her a počet hráčů online.
+- **Šetři požadavky Workeru:** každé `GET` je jeden ze 100 000 denně. Klient se
+  ptá při zobrazení úvodní obrazovky a pak jednou za 15 s, jen dokud je vidět
+  seznam her. Žádné dotazování na pozadí.
+- **Výsledky v D1** zapisuje místnost na konci zápasu:
 
-- RLS: čtení `rooms` a žebříčků všem, zápis jen service role; `profiles`
-  si upravuje vlastník řádku.
-- Worker ověřuje JWT z anonymního přihlášení přes JWKS projektu
-  (ověř, že projekt má asymetrické podpisové klíče; jinak ověřuj dotazem na Auth).
-- Uspání po týdnu: Worker má cron (zdarma) a jednou denně se zeptá na `rooms`.
-  Ověř, že to jako aktivita stačí.
+  ```
+  players(id, nick, created_at, last_seen)
+  matches(id, mode, seed, started_at, duration_s, score_a, score_b, proto)
+  match_players(match_id, player_id, team, class, points, captures, kills, built, breached)
+  ```
+
+  Žebříček (`GET /top?mode=&week=`) drží `Lobby` 60 s v paměti.
+- **Nasazení:** `wrangler deploy` z GitHub Actions při změně `server/` na `main`.
+  Ruční kroky v účtu (API token, secrets, databáze D1) sepiš do
+  `docs/multiplayer.md`.
 
 ### 4.6 Varianta B: P2P přes WebRTC (0 Kč)
 
 Když M1 ukáže, že free plán nestačí, a vlastník nechce platit: `RoomCore` běží
 v prohlížeči hostitele, ostatní se k němu připojí datovým kanálem (nespolehlivý,
-neuspořádaný — lepší na ztrátových sítích). Supabase Realtime pak slouží jen
-k navázání spojení (desítky zpráv na připojení, to kvóta unese). Zvaž knihovnu
-Trystero se strategií Supabase (ověř stav a licenci).
+neuspořádaný — lepší na ztrátových sítích). Objekt `Room` pak slouží jen
+k navázání spojení (desítky zpráv na připojení) a potom spí.
 
 Cena varianty B: TURN relay pro sítě, kde přímé spojení nejde (přihlašovací
-údaje musí vydávat Edge Function), hráči si navzájem vidí IP adresy, migrace
+údaje vydává Worker), hráči si navzájem vidí IP adresy, migrace
 hostitele při jeho odchodu, a hostitel na telefonu se zamčenou obrazovkou
 zastaví hru všem. Proto je až druhá volba.
 
@@ -417,11 +440,11 @@ u všech klientů při 20 % ztrát a 200 ms zpoždění.
 Dva gamepady, dvě kamery, dvojí HUD. Jen desktop.
 
 ### M3 — Potkávání (M)
-Úvodní obrazovka „Hrát spolu“, kód a odkaz, sdílení a QR, Supabase (anonymní
-přihlášení, jméno, adresář her, rychlá hra, živá čísla), rychlé povely a značky,
+Úvodní obrazovka „Hrát spolu“, kód a odkaz, sdílení a QR, objekt `Lobby`
+(identita, jméno, seznam her, rychlá hra, živá čísla), rychlé povely a značky,
 vyřazení nečinných, znovupřipojení, kontrola verze.
 **Akceptace:** kamarád se z telefonu připojí přes odkaz do 10 s bez vysvětlování;
-„Hrát spolu“ spojí dvě cizí zařízení; s vypnutým Supabase jde hrát přes odkaz.
+„Hrát spolu“ spojí dvě cizí zařízení; s nedostupným lobby jde hrát přes odkaz.
 
 ### M4 — Souboj (M)
 Životy v místnosti, zásahy hlášené střelcem s kontrolou, týmy a barvy, vlny
@@ -432,7 +455,7 @@ u všech stejné; role se hrají znatelně jinak.
 ### M5 — Vlajka: Obléhání a CTF (L)
 Automat vlajky v `RoomCore`, přihrávka, výběr arény ze seedu, průběh zápasu
 (příprava, hra, poločas, konec), HUD (stav vlajky, značky, čas), bodování,
-závěrečná obrazovka, zápis výsledků do Supabase.
+závěrečná obrazovka, zápis výsledků do D1.
 **Akceptace:** celé Obléhání 1v1 a 2v2 a CTF 3v3 bez zásahu do konzole.
 
 ### M6 — Opevnění (L)
@@ -447,8 +470,8 @@ Boti, monstra s životy a útokem a mód Obrana ostrova, duchové a denní výzv
 herní večery, Discord, `!join` na Twitchi, žebříčky, odveta.
 
 ### M8 — Obchody a pravidla (S)
-Zásady soukromí (jméno, anonymní id, zpracovatelé Cloudflare a Supabase,
-region EU), dotazníky věkového hodnocení (hra s cizími lidmi, bez volného
+Zásady soukromí (jméno, anonymní id, zpracovatel Cloudflare; ověř, že jde
+objekty i D1 držet v EU), dotazníky věkového hodnocení (hra s cizími lidmi, bez volného
 chatu), odkazy do aplikace (`?room=` otevře nainstalovanou hru), kontrola
 verze v obchodních buildech, `docs/release.md`.
 
@@ -475,8 +498,8 @@ verze v obchodních buildech, `docs/release.md`.
 8. **Soukromí a obchody.** Přibude zpracování jména a identifikátoru, hra
    s cizími lidmi mění věkové hodnocení. Generovaná jména a žádný volný
    chat tomu většinu práce ušetří.
-9. **Výpadky a limity.** Uspaný Supabase, vyčerpaný denní limit Cloudflare,
-   nasazení uprostřed zápasu. Hra pro jednoho a soukromé odkazy musí
+9. **Výpadky a limity.** Vyčerpaný denní limit Cloudflare, nasazení
+   uprostřed zápasu, výpadek služby. Hra pro jednoho a soukromé odkazy musí
    fungovat dál a hráč má dostat srozumitelnou hlášku.
 10. **Diváci a streamování.** Režim diváka pro pozdě příchozí a pro Twitch
     je levný (klient bez lodi) a pomáhá hru šířit.
@@ -487,22 +510,70 @@ verze v obchodních buildech, `docs/release.md`.
 
 ---
 
-## 11. Rozhodnutí vlastníka
+## 11. Kteří klienti hrají spolu
 
-1. **Přenos:** Cloudflare Durable Objects (doporučeno; zdarma při malém
-   provozu, při růstu $5/měs.), nebo P2P (0 Kč, víc práce a horší na telefonech)?
+| Klient | S webem? | Proč |
+|---|---|---|
+| Web, PWA | ano | tentýž kód |
+| iOS a Android (Capacitor, F7) | ano | tentýž kód v obálce; hlídá se jen verze protokolu (§4.3) |
+| Port do Flutteru | jen kdyby počítal bitově shodně | druhá implementace generátoru, simulace a úprav světa |
+| Luanti (DoggioWars) | v reálném čase ne | jiná síť, jiný terén, jiný let |
+
+**Flutter.** Mobilní appka už existuje: je to webový klient v obálce Capacitor,
+takže s webem hraje bez práce navíc. Port do Flutteru by znamenal napsat hru
+podruhé (vykreslování voxelů, mesher, generátor, simulace) a navždy držet obě
+implementace shodné. Každý rozdíl v terénu nebo v díře po vrtáku znamená, že
+jeden hráč proletí tam, kde druhý narazí; `sin`, `cos` a `pow` přitom mezi
+JavaScriptem a Dartem bitově shodné být nemusí. Flutter navíc nemá hotový 3D
+engine pro tenhle typ hry. Kdyby měl být Flutter kvůli nativnímu okolí (menu,
+nákupy, oznámení), dá se do něj hra vložit jako WebView a klient zůstane jeden.
+**Doporučení: neportovat.**
+
+**Luanti.** Tři nezávislé překážky, každá sama stačí:
+
+1. **Síť.** Klient Luanti se umí připojit jen k serveru Luanti. Mod má na
+   serveru nanejvýš HTTP dotazy (`core.request_http_api`: `fetch`, žádný
+   WebSocket), a jen když ho hráč ručně zapíše do `secure.http_mods`. Každý
+   HTTP dotaz stojí celý požadavek (poměr 20 : 1 platí jen pro WebSocket):
+   jeden hráč Luanti s 10 dotazy za sekundu vyčerpá denní limit za necelé 3 hodiny.
+2. **Terén.** Web má vlastní šum a vlastní PRNG dekorací. Ostrovy sedí
+   polohou, velikostí a biomem, ale kopce, pobřeží a tunely se liší. Kopání,
+   pancíř i kolize by se u obou hráčů rozcházely.
+3. **Let.** Luanti neumí naklonit horizont ani plné 6DoF — kvůli tomu web
+   vznikl. Hráč Luanti by měl jen ponorku a řízení `classic`.
+
+Co mezi Luanti a webem jde:
+
+- **Luanti má multiplayer vlastní.** Víc hráčů se připojí na jeden server
+  Luanti, který hostuje kterýkoli z nich. `vehicle.lua` pracuje s hráči
+  jmenovitě; jestli hra s víc hráči opravdu funguje, je neověřeno. Týmové módy
+  by tam byly samostatná práce v Lua, ne součást tohoto plánu.
+- **Společný žebříček** denní výzvy a závodu (stejný seed, sloupec „platforma“).
+  Mod pošle výsledek jedním HTTP dotazem; vyžaduje `secure.http_mods`.
+- **Twitch** přes `chatbridge` už funguje v obou.
+
+Plán proto počítá s jedním klientem na všech platformách. Luanti verze zůstává
+samostatná hra, jak říká plán `00`.
+
+---
+
+## 12. Rozhodnutí vlastníka
+
+1. **Rozhodnuto 25. 11.:** přenos i zbytek backendu na Cloudflare, bez
+   Supabase. Otevřené zůstává: je v pořádku $5 měsíčně, kdyby M1 ukázala, že
+   free plán nestačí, nebo pak raději P2P?
 2. **První týmový mód:** Obléhání (doporučeno, hratelné od 1v1), nebo rovnou CTF?
 3. **Frakce:** stejné týmy s rolemi (doporučeno), nebo v Obléhání volba
    „čisté frakce“ (brání jen ponorky a 6DoF, útočí jen stíhačky)?
 4. **Jména:** generovaná (doporučeno), nebo vlastní s filtrem a nahlašováním?
 5. **Rozdělená obrazovka** (M2b): ano, nebo vynechat?
-6. **Supabase:** je volné místo pro projekt zdarma (limit 2 aktivní), nebo
-   použít existující?
+6. **Flutter:** neportovat (doporučeno), nebo je pro port důvod, který
+   Capacitor neplní?
 7. **Herní večery a Discord:** chce je vlastník provozovat?
 
 ---
 
-## 12. Zdroje
+## 13. Zdroje
 
 - Supabase Realtime, limity: https://supabase.com/docs/guides/realtime/limits
 - Supabase Realtime, ceny: https://supabase.com/docs/guides/realtime/pricing
@@ -510,3 +581,8 @@ verze v obchodních buildech, `docs/release.md`.
 - Supabase, plány: https://supabase.com/pricing
 - Cloudflare Durable Objects, ceny a free plán: https://developers.cloudflare.com/durable-objects/platform/pricing/
 - Cloudflare TURN: https://developers.cloudflare.com/realtime/turn/faq/
+- Cloudflare Workers, limity: https://developers.cloudflare.com/workers/platform/limits/
+- Cloudflare Workers, ceny: https://developers.cloudflare.com/workers/platform/pricing/
+- Cloudflare D1, ceny: https://developers.cloudflare.com/d1/platform/pricing/
+- Cloudflare R2, ceny: https://developers.cloudflare.com/r2/pricing/
+- Luanti, Lua API (HTTP z modů): https://github.com/luanti-org/luanti/blob/master/doc/lua_api.md
